@@ -11,6 +11,7 @@ const {
   validateClientMsgId,
   mapMessage
 } = require('./utils');
+const { validateMediaPayload } = require('./uploads');
 
 let presenceTimer = null;
 
@@ -180,9 +181,11 @@ function attachSocketIO(httpServer) {
         const data = payload || {};
         const convId = validateId(data.conversationId);
         const cid = validateClientMsgId(data.clientMsgId);
-        const content = validateMessageContent(data.content);
-        const replyToId =
+const contentRaw = typeof data.content === 'string' ? data.content : '';
+const replyToId =
           data.replyToId === undefined ? null : validateNonnegInt(data.replyToId);
+
+        const media = validateMediaPayload({ ...data, content: contentRaw });
 
         if (!messageRateAllow(userId)) {
           return reply(err('RATE_LIMITED', 'إرسال رسائل أسرع من اللازم، انتظر قليلًا'));
@@ -192,7 +195,7 @@ function attachSocketIO(httpServer) {
 
         if (cid) {
           const dup = await db.query(
-            'SELECT id, conversation_id, sender_id, content, kind, reply_to_id, created_at, edited_at, deleted_at FROM messages WHERE conversation_id = $1 AND client_msg_id = $2',
+            'SELECT id, conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime, reply_to_id, created_at, edited_at, deleted_at FROM messages WHERE conversation_id = $1 AND client_msg_id = $2',
             [convId, cid]
           );
           if (dup.length) {
@@ -204,15 +207,15 @@ function attachSocketIO(httpServer) {
         try {
           const now = new Date().toISOString();
           inserted = await db.query(
-            `INSERT INTO messages (conversation_id, sender_id, content, kind, client_msg_id, reply_to_id, created_at)
-             VALUES ($1, $2, $3, 'text', $4, $5, $6) RETURNING id, created_at`,
-            [convId, userId, content, cid, replyToId, now]
+            `INSERT INTO messages (conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime, client_msg_id, reply_to_id, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at`,
+            [convId, userId, media.content, media.kind, media.mediaUrl, media.mediaName, media.mediaSize, media.mediaMime, cid, replyToId, now]
           );
         } catch (err) {
           const isDup = err && (err.code === '23505' || String(err.message).includes('UNIQUE'));
           if (isDup && cid) {
             const existing = await db.query(
-              'SELECT id, conversation_id, sender_id, content, kind, reply_to_id, created_at, edited_at, deleted_at FROM messages WHERE conversation_id = $1 AND client_msg_id = $2',
+              'SELECT id, conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime, reply_to_id, created_at, edited_at, deleted_at FROM messages WHERE conversation_id = $1 AND client_msg_id = $2',
               [convId, cid]
             );
             if (existing.length) {
@@ -226,8 +229,12 @@ function attachSocketIO(httpServer) {
           id: Number(inserted[0].id),
           conversation_id: convId,
           sender_id: userId,
-          content,
-          kind: 'text',
+          content: media.content,
+          kind: media.kind,
+          media_url: media.mediaUrl,
+          media_name: media.mediaName,
+          media_size: media.mediaSize,
+          media_mime: media.mediaMime,
           reply_to_id: replyToId,
           created_at: inserted[0].created_at instanceof Date
             ? inserted[0].created_at.toISOString()

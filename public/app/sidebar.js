@@ -1,6 +1,6 @@
 import { el, q, qa, esc, avClass, avatarInner, shortStamp, clampText, skeletonRows, userFlagHtml } from './ui.js';
 import { icon as ii } from './icons.js';
-import { store, isPinned, isMuted, totalUnread, setConvMeta, visibleConversations, localUnread } from './store.js';
+import { store, isPinned, isMuted, totalUnread, setConvMeta, visibleConversations, localUnread, isGroup, memberOf } from './store.js';
 
 const mount = () => el('conversation-list');
 const nodesById = new Map();
@@ -74,10 +74,20 @@ function userOf(conv) {
 
 function previewText(conv) {
   const lm = conv.lastMessage;
-  if (!lm) return 'لا توجد رسائل بعد';
+  if (!lm) return isGroup(conv) ? `${conv.memberCount || 0} عضو — لا رسائل بعد` : 'لا توجد رسائل بعد';
   const mine = conv.lastMessage && lm.sender_id === store.me?.id;
-  const txt = lm.deleted ? 'حذفت هذه الرسالة' : lm.content || '';
-  return (mine ? 'أنت: ' : '') + clampText(txt, 90);
+  let txt;
+  if (lm.deleted) txt = 'حذفت هذه الرسالة';
+  else if (lm.kind === 'image') txt = 'صورة';
+  else if (lm.kind === 'file') txt = 'ملف: ' + (lm.mediaName || 'ملف');
+  else txt = lm.content || '';
+  if (mine) return 'أنت: ' + clampText(txt, 90);
+  if (isGroup(conv)) {
+    const mem = memberOf(conv.id, lm.sender_id);
+    const prefix = mem ? mem.username : '';
+    return (prefix ? prefix + ': ' : '') + clampText(txt, 90);
+  }
+  return clampText(txt, 90);
 }
 
 function buildItem(conv) {

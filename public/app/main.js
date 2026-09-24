@@ -2,14 +2,16 @@ import { el, q, qa, toast, sendTimeZone } from './ui.js';
 import { icon as ii } from './icons.js';
 import { api, ApiError, setAuthExpiredHandler } from './api.js';
 import { connectSocket, disconnectSocket, setSocketHandlers, emitSend } from './socket.js';
-import { store, getConv, bumpLocalUnread, isPinned, isMuted, setConvMeta } from './store.js';
+import { store, getConv, bumpLocalUnread, isPinned, isMuted, setMembers, isGroup, memberOf } from './store.js';
 import { initSearch, startSearch } from './search.js';
 import { initSidebar, renderConversations, refreshOneConv, reorderConversations, renderOnlineList, setMe, updateMeStatus } from './sidebar.js';
 import { initMessages, openConversation, appendIncoming, appendPending, confirmPending, rejectPending, handleReadEvent, updateTyping, closeConversation, getActiveConvId, paintHeader, updateChatStatus, scrollToMessageById } from './messages.js';
 import { initComposer, startReply, setConnectedState, closeEmoji } from './composer.js';
-import { initPanel, openPanel, closePanel, refreshPanel } from './panel.js';
+import { initPanel, openPanel, closePanel, refreshPanel, closeGroup, isPanelOpen } from './panel.js';
 import { showMenu, closeMenu } from './menu.js';
 import { initNavDrawer, toggleNavDrawer, closeNavDrawer, renderNavDrawer } from './navdrawer.js';
+import { initGroupDialog, openGroupDialog } from './group.js';
+import { togglePin, toggleMute } from './prefs.js';
 
 const MAX_UNREAD = 99;
 
@@ -34,6 +36,7 @@ initNavDrawer({
   onPickOnline: openDmWithUser,
   onShowSection: showSidebarView
 });
+initGroupDialog({ onCreated: onGroupCreated });
 wireAuth();
 
 function showSidebarView(mode) {
@@ -187,6 +190,14 @@ function openConversationFromList(convId) {
   openConversation(convId);
 }
 
+function onGroupCreated(conv) {
+  store.conversations.set(Number(conv.id), conv);
+  refreshOneConv(conv);
+  reorderConversations();
+  openConversationFromList(conv.id);
+  toast('تم إنشاء المجموعة', 'ok');
+}
+
 function openDmWithUser(user) {
   const convId = findConvWithUser(user.id);
   if (convId !== null) {
@@ -236,19 +247,32 @@ function senderNameOf(m) {
   return 'مستخدم';
 }
 
-async function sendMessage(convId, content, replyTarget) {
+async function sendMessage(convId, content, replyTarget, media = null) {
   const tmpId = `tmp-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const tmp = {
     id: tmpId,
     conversation_id: convId,
     sender_id: store.me?.id,
     content,
-    kind: 'text',
+    kind: media ? media.kind : 'text',
+    media_url: media ? media.mediaUrl : null,
+    media_name: media ? media.mediaName : null,
+    media_size: media ? media.mediaSize : null,
+    media_mime: media ? media.mediaMime : null,
     reply_to_id: replyTarget ? replyTarget.id : null,
     created_at: new Date().toISOString()
   };
   appendPending(convId, tmp);
-  const res = await emitSend({ conversationId: convId, content, replyToId: tmp.reply_to_id });
+  const res = await emitSend({
+    conversationId: convId,
+    content,
+    replyToId: tmp.reply_to_id,
+    kind: tmp.kind,
+    mediaUrl: tmp.media_url,
+    mediaName: tmp.media_name,
+    mediaSize: tmp.media_size,
+    mediaMime: tmp.media_mime
+  });
   if (res.ok) {
     confirmPending(convId, tmpId, { ...res.message, conversation_id: convId });
     updateConvWithMessage(convId, res.message, true);
@@ -269,7 +293,9 @@ function updateConvWithMessage(convId, msg, mine) {
     kind: msg.kind || 'text',
     sender_id: msg.sender_id,
     created_at: msg.created_at,
-    deleted: !!msg.deleted
+    deleted: !!msg.deleted,
+    mediaUrl: msg.media_url || null,
+    mediaName: msg.media_name || null
   };
   conv.lastMessageAt = msg.created_at;
   store.conversations.set(convId, conv);
@@ -279,7 +305,7 @@ function updateConvWithMessage(convId, msg, mine) {
   }
 }
 
-function handleNewMessage(msg) {
+async function handleNewMessage(msg) {
   const convId = Number(msg.conversation_id);
   let conv = getConv(convId);
   const mine = store.me && msg.sender_id === store.me.id;
@@ -289,13 +315,27 @@ function handleNewMessage(msg) {
     return;
   }
 
+  if (isGroup(conv) && !memberOf(convId, msg.sender_id)) {
+    try {
+      const data = await api.get(`/api/conversations/${convId}/members`);
+      setMembers(convId, (data && data.members) || []);
+      const c = getConv(convId);
+      if (c && c.type === 'group') c.memberCount = (data.members || []).length;
+    } catch {}
+  }
+
+  conv = getConv(convId);
+  if (!conv) return;
+
   conv.lastMessage = {
     id: msg.id,
     content: msg.content,
     kind: msg.kind || 'text',
     sender_id: msg.sender_id,
     created_at: msg.created_at,
-    deleted: !!msg.deleted
+    deleted: !!msg.deleted,
+    mediaUrl: msg.media_url || null,
+    mediaName: msg.media_name || null
   };
   conv.lastMessageAt = msg.created_at;
   store.conversations.set(convId, conv);
@@ -351,8 +391,62 @@ function connectPipe() {
     },
     onMessage: handleNewMessage,
     onRead: handleReadEvent,
-    onTyping: updateTyping
+    onTyping: updateTyping,
+    onMembers: handleGroupMembers,
+    onRenamed: handleGroupRenamed,
+    onDeleted: handleGroupDeleted
   });
+}
+
+function handleGroupMembers(payload) {
+  const convId = Number(payload && payload.conversationId);
+  if (!convId) return;
+  setMembers(convId, (payload && payload.members) || []);
+  const conv = getConv(convId);
+  if (conv && conv.type === 'group') {
+    conv.memberCount = (payload.members || []).length;
+    store.conversations.set(convId, conv);
+  }
+  if (getActiveConvId() === convId) {
+    if (getConv(convId)) {
+      paintHeader(getConv(convId));
+      updateChatStatus(getConv(convId));
+    }
+  }
+  if (el('panel') && el('panel').classList.contains('open') && isPanelOpen()) refreshPanel();
+  renderConversations();
+  renderNavDrawer();
+}
+
+function handleGroupRenamed(payload) {
+  const convId = Number(payload && payload.conversationId);
+  if (!convId) return;
+  const conv = getConv(convId);
+  if (conv) {
+    conv.name = payload.name;
+    store.conversations.set(convId, conv);
+    if (getActiveConvId() === convId && getConv(convId)) paintHeader(getConv(convId));
+  }
+  renderConversations();
+  renderNavDrawer();
+}
+
+function handleGroupDeleted(payload) {
+  const convId = Number(payload && payload.conversationId);
+  if (!convId) return;
+  const had = getConv(convId);
+  store.conversations.delete(convId);
+  store.convMembers.delete(convId);
+  store.messages.delete(convId);
+  if (getActiveConvId() === convId) {
+    closeConversation();
+    closePanel();
+    renderConversations();
+    renderNavDrawer();
+    return;
+  }
+  renderConversations();
+  renderNavDrawer();
 }
 
 function rerenderConvDots() {
@@ -373,19 +467,6 @@ function onConvMenu(convId, anchor) {
   } else {
     showMenu(items, window.innerWidth / 2, window.innerHeight / 2);
   }
-}
-
-function togglePin(convId) {
-  const next = setConvMeta(convId, { pinned: !isPinned(convId) });
-  refreshOneConv(getConv(convId));
-  reorderConversations();
-  toast(next.pinned ? 'تم تثبيت المحادثة' : 'أزيل التثبيت', 'ok');
-}
-
-function toggleMute(convId) {
-  const next = setConvMeta(convId, { muted: !isMuted(convId) });
-  refreshOneConv(getConv(convId));
-  toast(next.muted ? 'تم كتم المحادثة' : 'تم إلغاء الكتم', 'ok');
 }
 
 function wireAuth() {
@@ -497,6 +578,7 @@ function resetToAuth() {
   store.convLocalUnread.clear();
   store.presence.clear();
   store.presenceUsers.clear();
+  store.convMembers.clear();
   showSidebarView('full');
   closeConversation();
   closePanel();

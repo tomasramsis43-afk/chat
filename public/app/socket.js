@@ -16,6 +16,9 @@ export function connectSocket() {
   socket.on('message:new', (msg) => handlers.onMessage && handlers.onMessage(msg));
   socket.on('conversation:read', (ev) => handlers.onRead && handlers.onRead(ev));
   socket.on('typing', (ev) => handlers.onTyping && handlers.onTyping(ev));
+  socket.on('conversation:members', (ev) => handlers.onMembers && handlers.onMembers(ev));
+  socket.on('conversation:renamed', (ev) => handlers.onRenamed && handlers.onRenamed(ev));
+  socket.on('conversation:deleted', (ev) => handlers.onDeleted && handlers.onDeleted(ev));
 
   return socket;
 }

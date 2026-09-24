@@ -117,6 +117,7 @@
         <h2>مرحبًا في سالم</h2>
         <p>ابحث عن الأشخاص في القائمة وابدأ أول محادثة.</p>
         <button id="empty-new-chat" class="btn btn-primary" type="button">محادثة جديدة</button>
+        <button id="empty-new-group" class="btn btn-ghost" type="button">مجموعة جديدة</button>
       </div>
     </div>
 
@@ -147,7 +148,9 @@
         </div>
         <div id="emoji-panel" class="emoji-panel hidden" role="menu" aria-label="إيموجي"></div>
         <form id="message-form" class="composer" autocomplete="off">
-          <button type="button" id="attach-btn" class="composer-btn" data-tip="مرفقات (قريبًا)" aria-label="إرفاق ملف"></button>
+          <button type="button" id="attach-btn" class="composer-btn" data-tip="إرفاق ملف" aria-label="إرفاق ملف"></button>
+          <input type="file" id="file-input" class="hidden-input" style="display:none"
+            aria-hidden="true" tabindex="-1" accept=".jpg,.jpeg,.png,.gif,.webp,.avif,.pdf,.txt,.zip,.docx,.xlsx,.pptx" />
           <textarea id="message-input" class="composer-box" rows="1" placeholder="اكتب رسالة…" maxlength="4000" aria-label="رسالتك"></textarea>
           <button type="button" id="emoji-btn" class="composer-btn" data-tip="إيموجي" aria-label="إيموجي"></button>
           <button type="submit" id="send-btn" class="send-btn" disabled aria-label="إرسال"></button>
@@ -172,6 +175,12 @@
       <button id="nav-close" class="icon-btn" type="button" aria-label="إغلاق القائمة"></button>
     </header>
     <div class="nav-body">
+      <div class="nav-create">
+        <button id="nav-new-group" class="nav-section-title nav-tab" type="button" aria-label="إنشاء مجموعة">
+          <span>إنشاء مجموعة</span>
+          <span class="nav-tab-side"><span class="nav-tab-arrow"></span></span>
+        </button>
+      </div>
       <div class="nav-section">
         <button id="nav-online-tab" class="nav-section-title nav-tab" type="button" aria-label="عرض المتصلون الآن">
           <span>متصلون الآن</span>
@@ -190,6 +199,31 @@
       </div>
     </div>
   </aside>
+
+  <div id="group-dialog-backdrop" class="dialog-backdrop hidden" aria-hidden="true"></div>
+  <div id="group-dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-label="إنشاء مجموعة">
+    <header class="dialog-head">
+      <span class="dialog-title">مجموعة جديدة</span>
+      <button id="group-dialog-close" class="icon-btn" type="button" aria-label="إغلاق"></button>
+    </header>
+    <div class="dialog-body">
+      <label class="field">
+        <span>اسم المجموعة</span>
+        <input type="text" id="group-name-input" class="input" placeholder="اسم المجموعة" maxlength="64" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>ابحث عن أعضاء</span>
+        <input type="search" id="group-search-input" class="input" placeholder="اكتب اسمًا للبحث…" autocomplete="off">
+      </label>
+      <div id="group-search-results" class="group-search-results hidden"></div>
+      <div class="group-selected-title">الأعضاء المحددون <span id="group-selected-count" class="pill">0</span></div>
+      <div id="group-selected-list" class="group-selected-list"></div>
+      <div class="group-hint">اضغط على الأشخاص لإضافتهم للمجموعة (اختياري).</div>
+    </div>
+    <footer class="dialog-foot">
+      <button id="group-create-btn" class="btn btn-primary" type="button">إنشاء المجموعة</button>
+    </footer>
+  </div>
 
 </div>
 

@@ -1,4 +1,5 @@
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 const dotenv = require('dotenv');
 
@@ -79,10 +80,21 @@ module.exports = {
     api: { windowMs: 60 * 1000, limit: Number(process.env.RATE_API || 300) },
     auth: { windowMs: 15 * 60 * 1000, limit: Number(process.env.RATE_AUTH || 10) },
     authUser: { windowMs: 15 * 60 * 1000, limit: Number(process.env.RATE_AUTH_USER || 5) },
+    upload: { windowMs: 60 * 1000, limit: Number(process.env.RATE_UPLOAD || 30) },
     msgMaxLength: Number(process.env.MSG_MAX_LEN || 4000),
+    uploadMaxBytes: Number(process.env.UPLOAD_MAX_BYTES || 5 * 1024 * 1024),
+    uploadMaxBase64: '7mb',
     typingIntervalMs: 2000,
     maxSocketsPerUser: 8,
     maxSocketsPerIp: 20
   },
+  uploadDir: isTest
+    ? path.join(os.tmpdir(), 'salem-chat-uploads')
+    : path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'data', 'uploads')),
+  geoCacheFile: isTest
+    ? path.join(os.tmpdir(), `salem-revgeo-cache-${process.pid}.json`)
+    : path.resolve(
+        process.env.GEO_CACHE_FILE || path.join(__dirname, '..', 'data', 'revgeo-cache.json')
+      ),
   bodyLimit: '16kb'
 };

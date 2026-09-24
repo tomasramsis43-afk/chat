@@ -15,6 +15,8 @@ const {
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const conversationRoutes = require('./routes/conversations');
+const uploadRoutes = require('./routes/uploads');
+const { serveUpload } = require('./uploads');
 
 function createServer() {
   const app = express();
@@ -39,7 +41,15 @@ function createServer() {
     })
   );
   app.use(compression());
-  app.use(express.json({ limit: config.bodyLimit }));
+  app.use((req, res, next) => {
+    const isUpload =
+      req.method === 'POST' && /^\/api\/conversations\/\d+\/attachments$/.test(req.path);
+    express.json({ limit: isUpload ? config.limits.uploadMaxBase64 : config.bodyLimit })(
+      req,
+      res,
+      next
+    );
+  });
   app.use(corsMiddleware);
   app.use(requireJsonBody);
 
@@ -50,6 +60,7 @@ function createServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/conversations', conversationRoutes);
+  app.use('/api/conversations', uploadRoutes);
 
   app.use(
     express.static(path.join(__dirname, '..', 'public'), {
@@ -57,6 +68,13 @@ function createServer() {
       etag: true,
       index: 'index.html'
     })
+  );
+
+  app.get(
+    '/uploads/:file',
+    require('./middleware').auth,
+    require('./middleware').requireAuth,
+    serveUpload
   );
 
   app.use(notFound);

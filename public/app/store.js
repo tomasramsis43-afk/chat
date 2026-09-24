@@ -9,6 +9,7 @@ export const store = {
   convLocalUnread: new Map(),
   messages: new Map(),
   convMeta: loadMeta(),
+  convMembers: new Map(),
   convFilter: 'all'
 };
 
@@ -44,10 +45,14 @@ export function setConvMeta(convId, patch) {
 }
 
 export function isPinned(convId) {
+  const c = getConv(convId);
+  if (c) return !!c.pinned;
   return !!convMeta(convId).pinned;
 }
 
 export function isMuted(convId) {
+  const c = getConv(convId);
+  if (c) return !!c.muted;
   return !!convMeta(convId).muted;
 }
 
@@ -64,6 +69,35 @@ export function getMessages(convId) {
     store.messages.set(convId, { items: [], nextBefore: null, loaded: false });
   }
   return store.messages.get(convId);
+}
+
+export function getMembers(convId) {
+  return store.convMembers.get(Number(convId)) || new Map();
+}
+
+export function setMembers(convId, arr) {
+  const map = new Map();
+  for (const u of arr || []) map.set(Number(u.id), u);
+  store.convMembers.set(Number(convId), map);
+  return map;
+}
+
+export function memberOf(convId, userId) {
+  return getMembers(convId).get(Number(userId)) || null;
+}
+
+export function otherMembers(convId) {
+  const meId = store.me && store.me.id;
+  const map = getMembers(convId);
+  const out = [];
+  for (const m of map.values()) {
+    if (Number(m.id) !== Number(meId)) out.push(m);
+  }
+  return out;
+}
+
+export function isGroup(conv) {
+  return !!conv && conv.type === 'group';
 }
 
 export function localUnread(convId) {
@@ -92,7 +126,7 @@ export function visibleConversations(filter = store.convFilter) {
   let items = [...store.conversations.values()];
   if (filter === 'unread') items = items.filter((c) => totalUnread(c) > 0);
   else if (filter === 'pinned') items = items.filter((c) => isPinned(c.id));
-  else if (filter === 'groups') items = items.filter((c) => !!c.name);
+  else if (filter === 'groups') items = items.filter((c) => c.type === 'group');
   items.sort((a, b) => {
     const ka = sortKey(a);
     const kb = sortKey(b);

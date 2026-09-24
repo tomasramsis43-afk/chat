@@ -162,6 +162,20 @@ export function sendTimeZone() {
   return browserTimeZone() || null;
 }
 
+export function userTimezone(user) {
+  if (!user) return null;
+  return user.tz_local || user.tz_ip || null;
+}
+
+export function timeInTimezone(tz) {
+  if (!tz) return null;
+  try {
+    return new Intl.DateTimeFormat('ar-EG', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date());
+  } catch {
+    return null;
+  }
+}
+
 export function flagNode(code) {
   const s = document.createElement('span');
   s.className = 'flag';

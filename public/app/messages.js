@@ -1,12 +1,20 @@
 import { api } from './api.js';
-import { el, q, qa, esc, avClass, avatarInner, timeOf, dayStamp, toast, userFlagHtml } from './ui.js';
+import { el, q, qa, esc, avClass, avatarInner, timeOf, dayStamp, toast, userFlagHtml, userTimezone, timeInTimezone } from './ui.js';
 import { icon as ii } from './icons.js';
 import { emitRead } from './socket.js';
-import { store, getConv, getMessages, clearLocalUnread } from './store.js';
+import { store, getConv, getMessages, clearLocalUnread, isGroup, getMembers, setMembers, memberOf } from './store.js';
 import { showMenu } from './menu.js';
 
 const PAGE = 45;
 const MAX_ROWS = 900;
+
+function fmtSize(bytes) {
+  const n = Number(bytes);
+  if (!n || n < 1) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
 
 let onReplyClick = null;
 let olderBusy = false;
@@ -69,6 +77,14 @@ export function openConversation(convId) {
   document.body.classList.add('chat-active');
 
   const conv = getConv(convId);
+  ensureGroupMembers(conv).then(() => {
+    if (store.activeConvId === convId) {
+      if (getConv(convId)) {
+        paintHeader(getConv(convId));
+        updateChatStatus(getConv(convId));
+      }
+    }
+  });
   if (conv) paintHeader(conv);
 
   const thread = getMessages(convId);
@@ -167,13 +183,27 @@ function senderOf(cid, m) {
   const me = store.me;
   if (me && m.sender_id === me.id) return { mine: true, name: me.username };
   const conv = getConv(cid);
+  if (conv && isGroup(conv)) {
+    const mem = memberOf(cid, m.sender_id);
+    if (mem) return { mine: false, name: mem.username, member: mem };
+    return { mine: false, name: 'عضو' };
+  }
   if (conv && conv.other && conv.other.id === m.sender_id) return { mine: false, name: conv.other.username };
   return { mine: false, name: 'مستخدم' };
 }
 
+async function ensureGroupMembers(conv) {
+  if (!conv || !isGroup(conv)) return;
+  if (getMembers(conv.id).size > 0) return;
+  try {
+    const data = await api.get(`/api/conversations/${conv.id}/members`);
+    setMembers(conv.id, data.members || []);
+  } catch {}
+}
+
 function buildRow(m, tmp = false) {
   const cid = m.conversation_id || store.activeConvId;
-  const { mine, name } = senderOf(cid, m);
+  const { mine, name, member } = senderOf(cid, m);
   const row = document.createElement('div');
   row.className = `msg-row ${mine ? 'mine' : 'theirs'}`;
   row.dataset.id = String(m.id);
@@ -193,13 +223,51 @@ function buildRow(m, tmp = false) {
   if (m.deleted) {
     bubble.classList.add('deleted');
     body.textContent = 'حُذفت هذه الرسالة';
+    bubble.appendChild(body);
+  } else if (m.kind === 'image' && m.media_url) {
+    bubble.classList.add('media');
+    const link = document.createElement('a');
+    link.className = 'media-link';
+    link.href = m.media_url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    const img = document.createElement('img');
+    img.className = 'msg-img';
+    img.src = m.media_url;
+    img.alt = m.media_name || 'صورة';
+    img.loading = 'lazy';
+    img.addEventListener('error', () => img.classList.add('broken'));
+    link.appendChild(img);
+    bubble.appendChild(link);
+    if (m.content) {
+      body.textContent = m.content;
+      bubble.appendChild(body);
+    }
+  } else if (m.kind === 'file' && m.media_url) {
+    bubble.classList.add('media');
+    const fa = document.createElement('a');
+    fa.className = 'msg-file';
+    fa.href = m.media_url;
+    fa.download = m.media_name || 'ملف';
+    fa.rel = 'noopener noreferrer';
+    fa.innerHTML = `<span class="file-ico">${ii('clip', 20)}</span>
+      <span class="file-info">
+        <span class="file-name">${esc(m.media_name || 'ملف')}</span>
+        <span class="file-meta">${fmtSize(m.media_size)}</span>
+      </span>`;
+    bubble.appendChild(fa);
+    if (m.content) {
+      body.textContent = m.content;
+      bubble.appendChild(body);
+    }
   } else if (m.kind && m.kind !== 'text') {
     bubble.classList.add('media');
-    body.textContent = `${m.kind === 'image' ? 'صورة' : m.kind === 'file' ? 'ملف' : 'مرفق'} (قريبًا)`;
+    body.textContent = m.kind === 'image' ? 'صورة' : 'ملف';
+    bubble.appendChild(body);
   } else {
     body.textContent = m.content || '';
+    bubble.appendChild(body);
   }
-  bubble.appendChild(body);
   inner.appendChild(bubble);
 
   if (!m.deleted) {
@@ -244,11 +312,14 @@ function buildRow(m, tmp = false) {
   row.appendChild(inner);
 
   const conv = getConv(cid);
-  if (!mine && conv && conv.other) {
-    const av = document.createElement('span');
-    av.className = `avatar xs ${avClass(conv.other.avatar_color)}`;
-    av.innerHTML = avatarInner(conv.other);
-    row.appendChild(av);
+  if (!mine && conv && (conv.other || isGroup(conv))) {
+    const src = member || conv.other;
+    if (src) {
+      const av = document.createElement('span');
+      av.className = `avatar xs ${avClass(src.avatar_color)}`;
+      av.innerHTML = avatarInner(src);
+      row.appendChild(av);
+    }
   }
 
   row.addEventListener('click', () => {
@@ -503,6 +574,17 @@ export function updateTyping(ev) {
 
 export function paintHeader(conv) {
   if (!conv) return;
+  if (isGroup(conv)) {
+    const name = conv.name || 'مجموعة';
+    const av = el('chat-avatar');
+    av.innerHTML = '';
+    av.classList.remove('av0', 'av1', 'av2', 'av3', 'av4', 'av5', 'av6', 'av7');
+    av.classList.add(avClass(name));
+    av.innerHTML = `<span class="avatar-letter">${esc(Array.from(name)[0] || '؟')}</span>`;
+    el('chat-name').innerHTML = `${esc(name)}`;
+    updateChatStatus(conv);
+    return;
+  }
   const other = conv.other || {};
   const puser = other.id ? store.presenceUsers.get(other.id) : null;
   const user = {
@@ -524,10 +606,32 @@ export function paintHeader(conv) {
 
 export function updateChatStatus(conv) {
   if (!conv || store.activeConvId !== Number(conv.id)) return;
-  const online = !!(conv.other && store.presence.has(conv.other.id));
-  el('chat-status-text').textContent = online ? 'متصل الآن' : 'غير متصل';
-  el('chat-status').classList.toggle('on', online);
+  if (isGroup(conv)) {
+    const members = getMembers(conv.id);
+    const total = conv.memberCount || members.size || 0;
+    let onlineCount = 0;
+    for (const m of members.values()) if (m.online) onlineCount++;
+    const tz = null;
+    el('chat-status-text').textContent = total
+      ? `${total} عضو${onlineCount ? ` · ${onlineCount} متصل` : ''}`
+      : 'مجموعة';
+    el('chat-status').classList.toggle('on', false);
+  } else {
+    const online = !!(conv.other && store.presence.has(conv.other.id));
+    el('chat-status-text').textContent = online ? 'متصل الآن' : 'غير متصل';
+    const tz = userTimezone(conv.other);
+    const lt = timeInTimezone(tz);
+    if (lt) el('chat-status-text').textContent += ` · ${lt} محليًا`;
+    el('chat-status').classList.toggle('on', online);
+  }
 }
+
+setInterval(() => {
+  const convId = store.activeConvId;
+  if (!convId) return;
+  const conv = getConv(convId);
+  if (conv && (isGroup(conv) || userTimezone(conv.other))) updateChatStatus(conv);
+}, 60000);
 
 export function scrollBottom(smooth = false) {
   if (prefersReduced()) smooth = false;

@@ -1,6 +1,17 @@
 import { el, esc, toast } from './ui.js';
 import { icon } from './icons.js';
+import { api } from './api.js';
 import { emitTyping, isConnected } from './socket.js';
+
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_FILE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif',
+  'application/pdf', 'text/plain', 'application/zip',
+  'application/x-zip-compressed',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+]);
 
 const EMOJIS = ['😀','😄','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😎','🤩','🥳','😭','😢','😅','😔','🤔','😳','🙃','😴','🤯','😱','🔥','✨','🎉','❤️','🧡','💛','💚','💙','💜','🖤','💯','👍','👎','👌','🙏','👏','🤝','💪','🤲','✌️','🤟','👀','🤙','🙌','🫶','🍕','🍔','☕','🍵','🌹','🌟','🌙','☀️','⚡','🥹','🧠','🎀','💫','🕊️','🧿','✏️','📌','💔','❤️‍🔥','✅','❌','🥱','😤','🤫','🫡','🙈','🐱','🐶','🦁','🐼','🦋','🐝','🌵','🌸','⚽','🏆','🎮','🚗','⚡','🚀','📱','💻','📷','🎧','🎁','⏰','🌍','🎯','🧭','🩷'];
 
@@ -19,7 +30,15 @@ export function initComposer(opts = {}) {
   getActiveConv = opts.getActiveConv || getActiveConv;
   const input = el('message-input');
 
-  setIcon('attach-btn', 'clip').addEventListener('click', () => toast('رفع الملفات غير متاح بعد', 'warn'));
+  setIcon('attach-btn', 'clip').addEventListener('click', () => {
+    if (!getActiveConv()) {
+      toast('افتح محادثة أولًا', 'warn');
+      return;
+    }
+    el('file-input').value = '';
+    el('file-input').click();
+  });
+  el('file-input').addEventListener('change', handleFileSelected);
   el('emoji-btn').innerHTML = icon('smile', 20);
   setIcon('send-btn', 'send');
   setIcon('reply-cancel', 'close');
@@ -95,6 +114,56 @@ function autoSize() {
   t.style.height = Math.min(t.scrollHeight, 156) + 'px';
 }
 
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('تعذّرت قراءة الملف'));
+    fr.readAsDataURL(file);
+  });
+}
+
+async function handleFileSelected(e) {
+  const file = e.target && e.target.files && e.target.files[0];
+  const convId = getActiveConv();
+  if (!file || !convId) return;
+  if (!ALLOWED_FILE_TYPES.has(file.type)) {
+    toast('نوع الملف غير مدعوم', 'warn');
+    return;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    toast('الملف أكبر من 5MB', 'warn');
+    return;
+  }
+  if (!isConnected()) {
+    toast('لا يوجد اتصال بالخادم — أعد المحاولة قريبًا');
+    return;
+  }
+  toast('جاري رفع الملف…', 'ok');
+  try {
+    const dataUrl = await readAsDataURL(file);
+    const res = await api.post(`/api/conversations/${convId}/attachments`, {
+      name: file.name,
+      type: file.type,
+      data: String(dataUrl).split(',')[1]
+    });
+    const att = res.attachment;
+    const kind = String(att.mime).startsWith('image/') ? 'image' : 'file';
+    const target = replyTarget;
+    onSendCallback && onSendCallback(convId, '', target, {
+      kind,
+      mediaUrl: att.url,
+      mediaName: att.name,
+      mediaSize: att.size,
+      mediaMime: att.mime
+    });
+    clearReply();
+    toast('تم رفع الملف وإرساله', 'ok');
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'تعذّر رفع الملف', 'error');
+  }
+}
+
 function updateSend() {
   el('send-btn').disabled = !el('message-input').value.trim() || !isConnected();
 }
@@ -119,8 +188,14 @@ export function closeEmoji() {
 
 export function startReply(msg, senderName) {
   replyTarget = msg;
+  let label;
+  if (msg.deleted) label = 'رسالة محذوفة';
+  else if (msg.content) label = msg.content;
+  else if (msg.kind === 'image') label = 'صورة';
+  else if (msg.kind === 'file') label = 'ملف: ' + (msg.media_name || 'ملف');
+  else label = '';
   el('reply-name').textContent = senderName ? esc(senderName) : 'مستخدم';
-  el('reply-body').textContent = msg.deleted ? 'رسالة محذوفة' : msg.content || '';
+  el('reply-body').textContent = label;
   el('reply-bar').classList.remove('hidden');
   el('reply-bar').dataset.id = String(msg.id);
   el('message-input').focus();

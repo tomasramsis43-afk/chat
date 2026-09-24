@@ -81,6 +81,8 @@ function makeLimiter(opts) {
 
 const apiLimiter = makeLimiter(config.limits.api);
 
+const uploadLimiter = makeLimiter(config.limits.upload);
+
 const authLimiter = makeLimiter({
   windowMs: config.limits.auth.windowMs,
   limit: config.limits.auth.limit
@@ -137,6 +139,7 @@ module.exports = {
   requireJsonBody,
   makeLimiter,
   apiLimiter,
+  uploadLimiter,
   authLimiter,
   authUserLimiter,
   googleLimiter,

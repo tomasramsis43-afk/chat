@@ -1,8 +1,9 @@
-import { el, esc, avClass, avatarInner, toast, userFlagHtml } from './ui.js';
+import { el, esc, avClass, avatarInner, toast, userFlagHtml, userTimezone, timeInTimezone } from './ui.js';
 import { icon as ii } from './icons.js';
-import { store, getConv, isMuted, setConvMeta } from './store.js';
+import { api } from './api.js';
+import { store, getConv, isMuted, isGroup, getMembers, setMembers } from './store.js';
+import { toggleMute } from './prefs.js';
 
-let meId = () => store.me?.id;
 let openConvId = null;
 
 export function initPanel() {
@@ -13,33 +14,175 @@ export function initPanel() {
   });
 }
 
+function memberRow(m, canManage, isOwner) {
+  const div = document.createElement('div');
+  div.className = 'member-row';
+  div.innerHTML = `
+    <span class="avatar sm ${avClass(m.avatar_color)} ${m.online ? 'is-online' : ''}">${avatarInner(m)}</span>
+    <span class="member-info">
+      <span class="member-name">${esc(m.username)}${userFlagHtml(m)}</span>
+      <span class="member-sub">${m.role === 'owner' ? 'المالك' : m.role === 'admin' ? 'مدير' : (m.online ? 'متصل' : 'غير متصل')}</span>
+    </span>
+    ${canManage && m.id !== store.me?.id ? `<button type="button" class="icon-btn slim member-remove" data-uid="${m.id}" aria-label="إزالة العضو">${ii('close', 15)}</button>` : ''}
+  `;
+  if (isOwner && m.role !== 'owner' && m.id !== store.me?.id) {
+    const promote = document.createElement('button');
+    promote.type = 'button';
+    promote.className = 'icon-btn slim member-promote';
+    promote.dataset.uid = String(m.id);
+    promote.setAttribute('aria-label', 'ترقية لمالك');
+    promote.innerHTML = ii('chevron', 15);
+    div.querySelector('.member-info').appendChild(promote);
+  }
+  return div;
+}
+
+async function fetchMembers(convId) {
+  try {
+    const data = await api.get(`/api/conversations/${convId}/members`);
+    setMembers(convId, data.members || []);
+  } catch {}
+}
+
 export function openPanel(convId) {
   convId = Number(convId);
   const conv = getConv(convId);
   if (!conv) return;
   openConvId = convId;
+  const muted = isMuted(convId);
+  const body = el('panel-body');
+  body.innerHTML = '';
+  body.replaceChildren();
+  const frag = document.createDocumentFragment();
+
+  if (isGroup(conv)) {
+    const canManage = conv.role === 'owner' || conv.role === 'admin';
+    const isOwner = conv.role === 'owner';
+    const hero = document.createElement('div');
+    hero.className = 'panel-hero';
+    hero.innerHTML = `
+      <span class="avatar xl ${avClass(conv.name)}">${avatarInner({ username: conv.name })}</span>
+      <h3 class="panel-name">${esc(conv.name)}</h3>
+      <p class="panel-status">${conv.memberCount || ''} عضو</p>
+      ${canManage ? '<p class="panel-sub">أنت مدير هذه المجموعة</p>' : ''}
+    `;
+    frag.appendChild(hero);
+
+    const actions = document.createElement('div');
+    actions.className = 'panel-actions';
+    actions.innerHTML = `
+      <button class="btn btn-ghost" type="button" data-act="copy-id">${ii('pen', 16)}<span>نسخ المعرّف</span></button>
+      <button class="btn btn-ghost" type="button" data-act="mute">${ii('bell', 16)}<span>${muted ? 'إلغاء الكتم' : 'كتم الإشعارات'}</span></button>
+      ${canManage ? `<button class="btn btn-ghost" type="button" data-act="rename">${ii('pen', 16)}<span>إعادة تسمية</span></button>` : ''}
+      ${canManage ? `<button class="btn btn-ghost" type="button" data-act="add-member">${ii('plus', 16)}<span>إضافة عضو</span></button>` : ''}
+      <button class="btn btn-ghost danger" type="button" data-act="leave">${ii('logout', 16)}<span>مغادرة</span></button>
+      ${isOwner ? `<button class="btn btn-ghost danger" type="button" data-act="delete">${ii('trash', 16)}<span>حذف المجموعة</span></button>` : ''}
+    `;
+    frag.appendChild(actions);
+
+    const listWrap = document.createElement('div');
+    listWrap.className = 'members-wrap';
+    const title = document.createElement('div');
+    title.className = 'members-title';
+    title.textContent = 'الأعضاء';
+    listWrap.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'member-list';
+    listWrap.appendChild(list);
+    frag.appendChild(listWrap);
+
+    const hint = document.createElement('p');
+    hint.className = 'panel-hint';
+    hint.textContent = 'يمكن للمديرين إضافة الأعضاء وإعادة تسمية المجموعة.';
+    frag.appendChild(hint);
+
+    body.appendChild(frag);
+
+    const meId = store.me && store.me.id;
+    const renderMembers = (members) => {
+      list.innerHTML = '';
+      const fragm = document.createDocumentFragment();
+      for (const m of members) {
+        fragm.appendChild(memberRow(m, canManage && m.id !== meId, isOwner));
+      }
+      list.appendChild(fragm);
+    };
+
+    const members = [...getMembers(convId).values()];
+    renderMembers(members);
+    if (!members.length) {
+      fetchMembers(convId).then(() => {
+        if (openConvId === convId) renderMembers([...getMembers(convId).values()]);
+      });
+    }
+
+    list.addEventListener('click', async (e) => {
+      const rm = e.target.closest('.member-remove');
+      const pm = e.target.closest('.member-promote');
+      if (rm) {
+        const uid = Number(rm.dataset.uid);
+        try {
+          const data = await api.delete('/api/conversations/' + convId + '/members/' + uid);
+          setMembers(convId, (data && data.members) || []);
+          renderMembers([...getMembers(convId).values()]);
+          toast('تمت إزالة العضو', 'ok');
+        } catch (err) {
+          toast(err.message || 'تعذّر إزالة العضو', 'error');
+        }
+      }
+      if (pm) {
+        const uid = Number(pm.dataset.uid);
+        try {
+          const data = await api.post('/api/conversations/' + convId + '/transfer', { userId: uid });
+          store.conversations.set(convId, { ...getConv(convId), role: 'member' });
+          setMembers(convId, (data && data.members) || []);
+          openPanel(convId);
+          toast('تم نقل الملكية', 'ok');
+        } catch (err) {
+          toast(err.message || 'تعذّر نقل الملكية', 'error');
+        }
+      }
+    });
+
+    body.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === 'copy-id') copy(`${convId}`);
+      else if (act === 'mute') {
+        toggleMute(convId, 'المجموعة');
+        openPanel(convId);
+      } else if (act === 'rename') renameGroup(convId);
+      else if (act === 'add-member') addMember(convId, openPanel);
+      else if (act === 'leave') leaveGroup(convId);
+      else if (act === 'delete') deleteGroup(convId);
+    });
+
+    el('panel').classList.add('open');
+    document.body.classList.add('chat-panel');
+    return;
+  }
+
   const other = conv.other || {};
   const puser = other.id ? store.presenceUsers.get(other.id) : null;
   const online = other.id ? store.presence.has(other.id) : false;
-  const isGroup = !!conv.name && !conv.other;
-  const name = isGroup ? conv.name : other.username || conv.name;
+  const name = other.username || conv.name;
   const user = {
     username: name,
     avatar_color: other.avatar_color,
-    country: isGroup ? null : other.country || ((puser && puser.country) || null),
-    tz_ip: isGroup ? null : other.tz_ip || ((puser && puser.tz_ip) || null),
-    tz_local: isGroup ? null : other.tz_local || ((puser && puser.tz_local) || null),
+    country: other.country || ((puser && puser.country) || null),
+    tz_ip: other.tz_ip || ((puser && puser.tz_ip) || null),
+    tz_local: other.tz_local || ((puser && puser.tz_local) || null),
     avatar_url: (puser && puser.avatar_url) || other.avatar_url
   };
-  const muted = isMuted(convId);
+  const localTime = timeInTimezone(userTimezone(user));
 
-  const body = el('panel-body');
   body.innerHTML = `
     <div class="panel-hero">
       <span class="avatar xl ${avClass(user.avatar_color)} ${online ? 'is-online' : ''}">${avatarInner(user)}</span>
-      <h3 class="panel-name">${esc(name)}${userFlagHtml(isGroup ? null : other)}</h3>
+      <h3 class="panel-name">${esc(name)}${userFlagHtml(other)}</h3>
       <p class="panel-status ${online ? 'on' : ''}">${online ? 'متصل الآن' : 'غير متصل'}</p>
-      ${isGroup ? '<p class="panel-sub">محادثة جماعية</p>' : ''}
+      ${localTime ? `<p class="panel-sub">التوقيت المحلي: ${localTime}</p>` : ''}
     </div>
     <div class="panel-actions">
       <button class="btn btn-ghost" type="button" data-act="copy-name">${ii('copy', 16)}<span>نسخ الاسم</span></button>
@@ -53,19 +196,96 @@ export function openPanel(convId) {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === 'copy-name') {
-      copy(`${name}`);
-    } else if (act === 'copy-id') {
-      copy(`${convId}`);
-    } else if (act === 'mute') {
-      const next = setConvMeta(convId, { muted: !muted });
+    if (act === 'copy-name') copy(`${name}`);
+    else if (act === 'copy-id') copy(`${convId}`);
+    else if (act === 'mute') {
+      toggleMute(convId, 'المحادثة');
       openPanel(convId);
-      toast(next.muted ? 'تم كتم المحادثة' : 'تم إلغاء كتم المحادثة', 'ok');
     }
   });
 
   el('panel').classList.add('open');
   document.body.classList.add('chat-panel');
+}
+
+async function renameGroup(convId) {
+  const conv = store.conversations.get(Number(convId));
+  const name = prompt('الاسم الجديد للمجموعة:', conv && conv.name || '');
+  if (name === null) return;
+  const trimmed = String(name).trim();
+  if (trimmed.length < 2 || trimmed.length > 64) {
+    toast('الاسم يجب أن يكون 2-64 حرفًا', 'error');
+    return;
+  }
+  try {
+    const data = await api.patch('/api/conversations/' + convId, { name: trimmed });
+    if (data && data.conversation) {
+      store.conversations.set(Number(convId), { ...store.conversations.get(Number(convId)), ...data.conversation });
+    }
+    openPanel(convId);
+    toast('تمت إعادة التسمية', 'ok');
+  } catch (err) {
+    toast(err.message || 'تعذّر إعادة التسمية', 'error');
+  }
+}
+
+function addMember(convId, refreshPanel) {
+  const name = prompt('اسم المستخدم المضاف للمجموعة:');
+  if (!name) return;
+  (async () => {
+    let user;
+    try {
+      const q = String(name).trim();
+      const data = await api.get(`/api/users?q=${encodeURIComponent(q)}&limit=5`);
+      const list = (data.users || []).filter((u) => !getMembers(convId).has(Number(u.id)));
+      if (list.length === 1) user = list[0];
+      else if (list.length > 1) {
+        const pick = prompt('مستخدمون متطابقون، اكتب رقمًا للاختيار:\n' + list.map((u, i) => `${i + 1}. ${u.username}`).join('\n'));
+        const idx = parseInt(pick, 10);
+        if (!idx || idx < 1 || idx > list.length) return;
+        user = list[idx - 1];
+      }
+      if (!user) {
+        toast('لم يتم العثور على المستخدم', 'error');
+        return;
+      }
+      const data2 = await api.post('/api/conversations/' + convId + '/members', { userId: user.id });
+      setMembers(convId, (data2 && data2.members) || []);
+      if (refreshPanel) refreshPanel(convId);
+      toast('تمت إضافة العضو', 'ok');
+    } catch (err) {
+      toast(err.message || 'تعذّرت إضافة العضو', 'error');
+    }
+  })();
+}
+
+async function leaveGroup(convId) {
+  const meId = store.me && store.me.id;
+  if (!meId) return;
+  try {
+    const data = await api.delete(`/api/conversations/${convId}/members/${meId}`);
+    if (data && data.deleted) closeGroup(convId);
+    else {
+      store.conversations.delete(Number(convId));
+      store.convMembers.delete(Number(convId));
+    }
+    closePanel();
+    toast('غادرت المجموعة', 'ok');
+  } catch (err) {
+    toast(err.message || 'تعذّرت المغادرة', 'error');
+  }
+}
+
+async function deleteGroup(convId) {
+  if (!confirm('حذف المجموعة نهائيًا؟ لا يمكن التراجع.')) return;
+  try {
+    await api.delete(`/api/conversations/${convId}`);
+    closeGroup(convId);
+    closePanel();
+    toast('تم حذف المجموعة', 'ok');
+  } catch (err) {
+    toast(err.message || 'تعذّر حذف المجموعة', 'error');
+  }
 }
 
 async function copy(text) {
@@ -93,4 +313,9 @@ export function isPanelOpen() {
 
 export function panelConvId() {
   return openConvId;
+}
+
+export function closeGroup(convId) {
+  store.conversations.delete(Number(convId));
+  store.convMembers.delete(Number(convId));
 }
