@@ -451,7 +451,10 @@ function isMine(m) {
 export function appendPending(convId, tmp) {
   const thread = getMessages(convId);
   thread.items.push(tmp);
-  if (store.activeConvId === convId) messagesEl.appendChild(buildRow(tmp, true));
+  if (store.activeConvId === convId) {
+    messagesEl.appendChild(buildRow(tmp, true));
+    if (atBottom() || isMine(tmp)) scrollBottom(true);
+  }
 }
 
 export function confirmPending(convId, tmpId, confirmed) {
@@ -463,6 +466,7 @@ export function confirmPending(convId, tmpId, confirmed) {
   const row = q(`[data-tmp="${tmpId}"]`, messagesEl);
   if (row) {
     row.replaceWith(buildRow(confirmed));
+    if (atBottom() || isMine(confirmed)) scrollBottom(true);
     return;
   }
   messagesEl.appendChild(buildRow(confirmed));
@@ -653,7 +657,10 @@ setInterval(() => {
 
 export function scrollBottom(smooth = false) {
   if (prefersReduced()) smooth = false;
-  messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  const target = messagesEl.scrollHeight;
+  const distance = target - messagesEl.scrollTop - messagesEl.clientHeight;
+  const behavior = smooth && distance <= 400 ? 'smooth' : 'auto';
+  messagesEl.scrollTo({ top: target, behavior });
   updateJumpPill();
 }
 
