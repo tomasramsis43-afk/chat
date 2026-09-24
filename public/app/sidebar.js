@@ -1,4 +1,4 @@
-import { el, q, qa, esc, avClass, avatarInner, shortStamp, clampText, skeletonRows } from './ui.js';
+import { el, q, qa, esc, avClass, avatarInner, shortStamp, clampText, skeletonRows, flagHtml } from './ui.js';
 import { icon as ii } from './icons.js';
 import { store, isPinned, isMuted, totalUnread, setConvMeta, visibleConversations, localUnread } from './store.js';
 
@@ -103,7 +103,7 @@ function buildItem(conv) {
     </span>
     <span class="conv-info">
       <span class="conv-top">
-        <span class="conv-name">${esc(other.username)}</span>
+        <span class="conv-name">${esc(other.username)}${flagHtml(other.country)}</span>
         <span class="conv-ico">
           ${pin ? `<span class="conv-pin">${ii('pin', 14)}</span>` : ''}
           ${mute ? `<span class="conv-mute">${ii('bell', 14)}</span>` : ''}
@@ -159,7 +159,7 @@ export function patchConv(conv) {
   av.textContent = other.username ? Array.from(other.username)[0] : '';
   q('.av-dot', c).classList.toggle('on', online);
 
-  q('.conv-name', c).textContent = other.username;
+  q('.conv-name', c).innerHTML = `${esc(other.username)}${flagHtml(other.country)}`;
   q('.conv-time', c).textContent = shortStamp(conv.lastMessageAt);
   const prev = q('.conv-preview', c);
   prev.textContent = previewText(conv);
@@ -254,7 +254,7 @@ export function renderOnlineList() {
     item.dataset.id = String(u.id);
     item.innerHTML = `
       <span class="avatar sm ${avClass(u.avatar_color)}">${avatarInner(u)}</span>
-      <span class="search-name">${esc(u.username)}</span>
+      <span class="search-name">${esc(u.username)}${flagHtml(u.country)}</span>
       <span class="dot online-dot"></span>`;
     frag.appendChild(item);
   }
@@ -270,7 +270,7 @@ export function setMe(user, connected) {
   av.classList.remove('av0', 'av1', 'av2', 'av3', 'av4', 'av5', 'av6', 'av7');
   av.classList.add(avClass(me.avatar_color));
   av.appendChild(me.avatar_url ? avatarElImg(me) : letterEl(me));
-  el('my-name').textContent = me.username;
+  el('my-name').innerHTML = `${esc(me.username)}${flagHtml(me.country)}`;
   updateMeStatus(connected);
   window.salemMe = me;
 }

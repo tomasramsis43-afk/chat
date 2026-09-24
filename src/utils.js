@@ -128,6 +128,7 @@ function safeUser(row) {
     username: row.username,
     avatar_color: row.avatar_color,
     avatar_url: row.avatar_url || null,
+    country: row.country || null,
     created_at: toIso(row.created_at)
   };
 }

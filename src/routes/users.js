@@ -18,18 +18,18 @@ router.get('/', requireAuth, async (req, res) => {
   let rows;
   if (q) {
     rows = await db.query(
-      `SELECT id, username, avatar_color, avatar_url, created_at
-       FROM users
-       WHERE username_lower LIKE $1 ESCAPE '\\' AND id <> $2
+`SELECT id, username, avatar_color, avatar_url, country, created_at
+        FROM users
+        WHERE username_lower LIKE $1 ESCAPE '\\' AND id <> $2
        ORDER BY username
        LIMIT $3`,
       [`%${escapeLike(q.toLowerCase())}%`, req.user.id, limit]
     );
   } else {
     rows = await db.query(
-      `SELECT id, username, avatar_color, avatar_url, created_at
-       FROM users
-       WHERE id <> $1
+`SELECT id, username, avatar_color, avatar_url, country, created_at
+        FROM users
+        WHERE id <> $1
        ORDER BY username
        LIMIT $2`,
       [req.user.id, limit]
@@ -42,7 +42,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const userId = validateId(req.params.id);
   const rows = await db.query(
-    'SELECT id, username, avatar_color, avatar_url, created_at FROM users WHERE id = $1',
+    'SELECT id, username, avatar_color, avatar_url, country, created_at FROM users WHERE id = $1',
     [userId]
   );
   if (!rows.length) {

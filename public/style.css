@@ -618,6 +618,7 @@ svg { flex: none; }
 .search-item:hover, .online-item:hover { background: var(--surface-2); }
 .search-item.active { background: var(--accent-soft); }
 .search-name { flex: 1; min-width: 0; font-weight: 600; font-size: var(--fs-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flag { display: inline-block; margin-inline-start: 4px; font-size: 0.92em; line-height: 1; vertical-align: -1px; user-select: none; -webkit-user-select: none; }
 
 /* Online sections */
 .online-list-wrap { padding: 2px var(--sp-4) 10px; }

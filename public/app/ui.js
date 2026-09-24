@@ -116,3 +116,45 @@ export function clampText(text, max = 120) {
   const s = String(text || '');
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
+
+const COUNTRY_NAMES = {
+  EG: 'مصر', SA: 'السعودية', AE: 'الإمارات', QA: 'قطر', KW: 'الكويت', BH: 'البحرين', OM: 'عُمان',
+  IQ: 'العراق', YE: 'اليمن', SY: 'سوريا', JO: 'الأردن', LB: 'لبنان', PS: 'فلسطين', SD: 'السودان',
+  LY: 'ليبيا', TN: 'تونس', DZ: 'الجزائر', MA: 'المغرب', MR: 'موريتانيا', SO: 'الصومال', DJ: 'جيبوتي', KM: 'جزر القمر',
+  TR: 'تركيا', US: 'الولايات المتحدة', GB: 'بريطانيا', FR: 'فرنسا', DE: 'ألمانيا', IT: 'إيطاليا',
+  ES: 'إسبانيا', NL: 'هولندا', SE: 'السويد', NO: 'النرويج', DK: 'الدنمارك', BE: 'بلجيكا', AT: 'النمسا',
+  CH: 'سويسرا', RU: 'روسيا', CA: 'كندا', AU: 'أستراليا', IN: 'الهند', PK: 'باكستان', CN: 'الصين',
+  JP: 'اليابان', BR: 'البرازيل'
+};
+
+export function flagEmoji(code) {
+  if (!/^[A-Z]{2}$/.test(String(code || ''))) return null;
+  return String.fromCodePoint(...[...String(code)].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 65)));
+}
+
+export function countryName(code) {
+  if (!/^[A-Z]{2}$/.test(String(code || ''))) return null;
+  return COUNTRY_NAMES[code] || null;
+}
+
+export function flagHtml(code) {
+  const emo = flagEmoji(code);
+  if (!emo) return '';
+  const name = countryName(code);
+  const label = name ? `${name} (${code})` : `(${code})`;
+  return `<span class="flag" role="img" title="${esc(label)}" aria-label="${esc(label)}">${emo}</span>`;
+}
+
+export function flagNode(code) {
+  const s = document.createElement('span');
+  s.className = 'flag';
+  const emo = flagEmoji(code);
+  if (!emo) return '';
+  const name = countryName(code);
+  const label = name ? `${name} (${code})` : `(${code})`;
+  s.setAttribute('role', 'img');
+  s.title = label;
+  s.setAttribute('aria-label', label);
+  s.textContent = emo;
+  return s;
+}

@@ -5,6 +5,7 @@ const db = require('../db');
 const config = require('../config');
 const presence = require('../presence');
 const google = require('../google');
+const geo = require('../geo');
 const {
   ApiError,
   parseCookies,
@@ -98,7 +99,7 @@ async function uniqueGoogleUsername(email) {
   return `${base.slice(0, 16)}_${randomToken(3)}`;
 }
 
-async function findOrCreateGoogleUser(profile) {
+async function findOrCreateGoogleUser(profile, req) {
   const email = (profile.email || '').toLowerCase();
   if (!email) throw new ApiError(400, 'GOOGLE_NO_EMAIL', 'لا يوجد بريد إلكتروني في حساب غوغل');
 
@@ -108,11 +109,12 @@ async function findOrCreateGoogleUser(profile) {
   }
 
   const now = new Date().toISOString();
+  const country = geo.countryForReq(req);
   if (rows.length) {
     const id = Number(rows[0].id);
     await db.query(
-      'UPDATE users SET email = COALESCE(email, $2), google_sub = COALESCE(google_sub, $3), avatar_url = COALESCE(avatar_url, $4) WHERE id = $1',
-      [id, email, profile.sub, profile.picture || null]
+      'UPDATE users SET email = COALESCE(email, $2), google_sub = COALESCE(google_sub, $3), avatar_url = COALESCE(avatar_url, $4), country = COALESCE(country, $5) WHERE id = $1',
+      [id, email, profile.sub, profile.picture || null, country]
     );
     return { id };
   }
@@ -120,9 +122,9 @@ async function findOrCreateGoogleUser(profile) {
   const username = await uniqueGoogleUsername(email);
   const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
   const inserted = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL) RETURNING id`,
-    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, country, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL) RETURNING id`,
+    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, country, now]
   );
   return { id: Number(inserted[0].id) };
 }
@@ -141,13 +143,14 @@ router.post('/register', authLimiter, async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
   const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
   const now = new Date().toISOString();
+  const country = geo.countryForReq(req);
 
   const rows = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, NULL, $5, NULL) RETURNING id`,
-    [username, username.toLowerCase(), passwordHash, color, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, country, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, NULL) RETURNING id`,
+    [username, username.toLowerCase(), passwordHash, color, country, now]
   );
-  const user = { id: Number(rows[0].id), username, avatar_color: color };
+  const user = { id: Number(rows[0].id), username, avatar_color: color, country: country || null };
 
   const session = await createSession(user.id, req);
   issueCookies(res, session);
@@ -160,7 +163,7 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   const password = String(body.password || '');
 
   const rows = await db.query(
-    'SELECT id, username, password_hash, avatar_color FROM users WHERE username_lower = $1',
+    'SELECT id, username, password_hash, avatar_color, country FROM users WHERE username_lower = $1',
     [username.toLowerCase()]
   );
   const user = rows[0];
@@ -169,10 +172,20 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
     throw new ApiError(401, 'INVALID_CREDENTIALS', 'بيانات تسجيل الدخول غير صحيحة');
   }
 
+  const country = geo.countryForReq(req);
+  if (country) {
+    await db.query('UPDATE users SET country = $1 WHERE id = $2', [country, Number(user.id)]);
+  }
+
   const session = await createSession(Number(user.id), req);
   issueCookies(res, session);
   res.json({
-    user: { id: Number(user.id), username: user.username, avatar_color: user.avatar_color }
+    user: {
+      id: Number(user.id),
+      username: user.username,
+      avatar_color: user.avatar_color,
+      country: country || user.country || null
+    }
   });
 });
 
@@ -281,7 +294,7 @@ router.get('/google/callback', googleLimiter, async (req, res) => {
     const profile = await google.verifyIdToken(token.id_token);
     if (profile.email_verified !== true) return redirect(false, 'GOOGLE_EMAIL_UNVERIFIED');
 
-    const user = await findOrCreateGoogleUser(profile);
+    const user = await findOrCreateGoogleUser(profile, req);
     const session = await createSession(user.id, req);
     issueCookies(res, session);
     redirect(true, 'OK');
@@ -293,7 +306,7 @@ router.get('/google/callback', googleLimiter, async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const rows = await db.query(
-    'SELECT id, username, avatar_color, avatar_url, created_at FROM users WHERE id = $1',
+    'SELECT id, username, avatar_color, avatar_url, country, created_at FROM users WHERE id = $1',
     [req.user.id]
   );
   if (!rows.length) throw new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول');
