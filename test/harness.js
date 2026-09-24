@@ -1,4 +1,6 @@
 process.env.NODE_ENV = 'test';
+process.env.RATE_AUTH = process.env.RATE_AUTH || '1000';
+process.env.RATE_AUTH_USER = process.env.RATE_AUTH_USER || '1000';
 
 const http = require('http');
 const { io: ioClient } = require('socket.io-client');

@@ -131,6 +131,7 @@ function safeUser(row) {
     country: row.country || null,
     tz_ip: row.tz_ip || null,
     tz_local: row.tz_local || null,
+    gender: row.gender || null,
     created_at: toIso(row.created_at)
   };
 }

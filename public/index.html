@@ -27,6 +27,7 @@
     <div class="auth-tabs" role="tablist" aria-label="تسجيل الدخول">
       <button class="auth-tab active" type="button" role="tab" aria-selected="true" data-tab="login">دخول</button>
       <button class="auth-tab" type="button" role="tab" aria-selected="false" data-tab="register">حساب جديد</button>
+      <button class="auth-tab" type="button" role="tab" aria-selected="false" data-tab="guest">زائر</button>
     </div>
     <form id="login-form" class="auth-form" novalidate>
       <label class="field">
@@ -49,8 +50,31 @@
         <span>كلمة المرور</span>
         <input type="password" id="register-password" class="input" placeholder="8 أحرف على الأقل" autocomplete="new-password" required>
       </label>
+      <fieldset class="field">
+        <legend>الجنس</legend>
+        <div class="gender-row">
+          <label class="gender-opt"><input type="radio" name="register-gender" value="male"><span>ذكر</span></label>
+          <label class="gender-opt"><input type="radio" name="register-gender" value="female"><span>أنثى</span></label>
+        </div>
+      </fieldset>
       <p class="auth-error hidden" id="register-error"></p>
       <button type="submit" class="btn btn-primary btn-block">إنشاء الحساب</button>
+    </form>
+    <form id="guest-form" class="auth-form hidden" novalidate>
+      <label class="field">
+        <span>اسم الزائر</span>
+        <input type="text" id="guest-username" class="input" placeholder="3-24 حرفًا" autocomplete="off" maxlength="40" required>
+      </label>
+      <fieldset class="field">
+        <legend>الجنس</legend>
+        <div class="gender-row">
+          <label class="gender-opt"><input type="radio" name="guest-gender" value="male"><span>ذكر</span></label>
+          <label class="gender-opt"><input type="radio" name="guest-gender" value="female"><span>أنثى</span></label>
+        </div>
+      </fieldset>
+      <p class="auth-error hidden" id="guest-error"></p>
+      <button type="submit" class="btn btn-primary btn-block">دخول كزائر</button>
+      <p class="auth-note">لا حاجة لكلمة مرور. عند الخروج يحذف الاسم نهائيًا.</p>
     </form>
     <div class="auth-divider"><span>أو</span></div>
     <button id="google-btn" class="google-btn" type="button">

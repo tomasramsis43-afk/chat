@@ -116,10 +116,11 @@ router.get('/', requireAuth, async (req, res) => {
             cm.last_read_message_id, cm.muted_until, cm.archived_at, cm.role AS cm_role,
             m.content AS last_content, m.kind AS last_kind, m.sender_id AS last_sender_id,
             m.created_at AS last_created_at, m.deleted_at AS last_deleted_at,
-            m.media_url AS last_media_url, m.media_name AS last_media_name,
-            cm.pinned_at AS cm_pinned_at,
-            ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
-            ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local,
+m.media_url AS last_media_url, m.media_name AS last_media_name,
+             cm.pinned_at AS cm_pinned_at,
+             ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
+             ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local,
+             ou.gender AS other_gender,
             (SELECT COUNT(*) FROM conversation_members mc
               WHERE mc.conversation_id = c.id) AS member_count,
             (SELECT COUNT(*) FROM messages sm
@@ -161,6 +162,7 @@ router.get('/', requireAuth, async (req, res) => {
             country: row.other_country || null,
             tz_ip: row.other_tz_ip || null,
             tz_local: row.other_tz_local || null,
+            gender: row.other_gender || null,
             online
           }
         : null,
@@ -509,6 +511,7 @@ async function summary(convId, forUserId) {
     `SELECT c.id, c.type, c.name,
             ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
             ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local,
+            ou.gender AS other_gender,
             cm.role AS cm_role,
             (SELECT COUNT(*) FROM conversation_members mc
               WHERE mc.conversation_id = c.id) AS member_count
@@ -534,6 +537,7 @@ async function summary(convId, forUserId) {
       country: row.other_country || null,
       tz_ip: row.other_tz_ip || null,
       tz_local: row.other_tz_local || null,
+      gender: row.other_gender || null,
       online: presence.isOnline(otherId)
     };
   } else if (row.name !== null && row.name !== undefined) {

@@ -494,6 +494,7 @@ function wireAuth() {
     });
     el('login-form').classList.toggle('hidden', tab.dataset.tab !== 'login');
     el('register-form').classList.toggle('hidden', tab.dataset.tab !== 'register');
+    el('guest-form').classList.toggle('hidden', tab.dataset.tab !== 'guest');
   });
 
   el('login-form').addEventListener('submit', async (e) => {
@@ -528,6 +529,7 @@ function wireAuth() {
     e.preventDefault();
     const username = el('register-username').value.trim();
     const password = el('register-password').value;
+    const gender = q('input[name="register-gender"]:checked', el('register-form'));
     const errEl = el('register-error');
     if (username.length < 3 || username.length > 24 || !/^[\p{L}\p{N}_\- .]+$/u.test(username)) {
       errEl.textContent = 'الاسم 3-24 حرفًا (حروف وأرقام فقط)';
@@ -539,12 +541,17 @@ function wireAuth() {
       errEl.classList.remove('hidden');
       return;
     }
+    if (!gender) {
+      errEl.textContent = 'اختر الجنس (ذكر أو أنثى)';
+      errEl.classList.remove('hidden');
+      return;
+    }
     errEl.classList.add('hidden');
     const btn = q('button[type=submit]', el('register-form'));
     btn.disabled = true;
     btn.textContent = 'جارٍ الإنشاء…';
     try {
-      const data = await api.post('/api/auth/register', { username, password, timezone: sendTimeZone() });
+      const data = await api.post('/api/auth/register', { username, password, gender: gender.value, timezone: sendTimeZone() });
       window.salemMe = data.user;
       store.me = data.user;
       enterApp(data.user);
@@ -557,7 +564,7 @@ function wireAuth() {
     }
   });
 
-  el('google-btn').addEventListener('click', async () => {
+el('google-btn').addEventListener('click', async () => {
     el('google-btn').disabled = true;
     try {
       const data = await api.post('/api/auth/google/start');
@@ -569,6 +576,39 @@ function wireAuth() {
           : 'تعذّر بدء تسجيل الدخول بغوغل';
       toast(msg, 'warn');
       el('google-btn').disabled = false;
+    }
+  });
+
+  el('guest-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = el('guest-username').value.trim();
+    const gender = q('input[name="guest-gender"]:checked', el('guest-form'));
+    const errEl = el('guest-error');
+    if (username.length < 3 || username.length > 24 || !/^[\p{L}\p{N}_\- .]+$/u.test(username)) {
+      errEl.textContent = 'الاسم 3-24 حرفًا (حروف وأرقام فقط)';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (!gender) {
+      errEl.textContent = 'اختر الجنس (ذكر أو أنثى)';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    errEl.classList.add('hidden');
+    const btn = q('button[type=submit]', el('guest-form'));
+    btn.disabled = true;
+    btn.textContent = 'دخول…';
+    try {
+      const data = await api.post('/api/auth/guest', { username, gender: gender.value, timezone: sendTimeZone() });
+      window.salemMe = data.user;
+      store.me = data.user;
+      enterApp(data.user);
+    } catch (err) {
+      errEl.textContent = err instanceof ApiError ? err.message : 'تعذّر الدخول';
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'دخول كزائر';
     }
   });
 

@@ -45,6 +45,48 @@ test('auth suite', async (t) => {
     assert.equal(shortPass.status, 400);
   });
 
+  await t.test('register stores gender (male/female) and returns it', async () => {
+    const male = await api('POST', '/api/auth/register', {
+      body: { username: 'ahmad_g', password: 'password123', gender: 'male' }
+    });
+    assert.equal(male.status, 201);
+    assert.equal(male.data.user.gender, 'male');
+
+    const female = await api('POST', '/api/auth/register', {
+      body: { username: 'mariam_g', password: 'password123', gender: 'female' }
+    });
+    assert.equal(female.status, 201);
+    assert.equal(female.data.user.gender, 'female');
+
+    const me = await api('GET', '/api/auth/me', { cookies: male.cookies });
+    assert.equal(me.status, 200);
+    assert.equal(me.data.user.gender, 'male');
+
+    const login = await loginUser('ahmad_g');
+    assert.equal(login.status, 200);
+    assert.equal(login.data.user.gender, 'male');
+  });
+
+  await t.test('register without gender stores null', async () => {
+    const res = await api('POST', '/api/auth/register', {
+      body: { username: 'nogene_u', password: 'password123' }
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.user.gender, null);
+
+    const me = await api('GET', '/api/auth/me', { cookies: res.cookies });
+    assert.equal(me.status, 200);
+    assert.equal(me.data.user.gender, null);
+  });
+
+  await t.test('register rejects invalid gender', async () => {
+    const res = await api('POST', '/api/auth/register', {
+      body: { username: 'bogus_g', password: 'password123', gender: 'other' }
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.data.error.code, 'BAD_GENDER');
+  });
+
   await t.test('register is case-insensitive for username uniqueness', async () => {
     const res = await api('POST', '/api/auth/register', {
       body: { username: 'ALI_TEST', password: 'password123' }

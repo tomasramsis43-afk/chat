@@ -18,18 +18,18 @@ router.get('/', requireAuth, async (req, res) => {
   let rows;
   if (q) {
     rows = await db.query(
-`SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, created_at
+`SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, created_at
         FROM users
-        WHERE username_lower LIKE $1 ESCAPE '\\' AND id <> $2
+        WHERE username_lower LIKE $1 ESCAPE '\\' AND id <> $2 AND deleted_at IS NULL
        ORDER BY username
        LIMIT $3`,
       [`%${escapeLike(q.toLowerCase())}%`, req.user.id, limit]
     );
   } else {
     rows = await db.query(
-`SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, created_at
+`SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, created_at
         FROM users
-        WHERE id <> $1
+        WHERE id <> $1 AND deleted_at IS NULL
        ORDER BY username
        LIMIT $2`,
       [req.user.id, limit]
@@ -42,7 +42,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const userId = validateId(req.params.id);
   const rows = await db.query(
-    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, created_at FROM users WHERE id = $1',
+    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, created_at FROM users WHERE id = $1 AND deleted_at IS NULL',
     [userId]
   );
   if (!rows.length) {

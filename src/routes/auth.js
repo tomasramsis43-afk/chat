@@ -24,6 +24,15 @@ const { requireAuth, authLimiter, authUserLimiter, googleLimiter, gpsLimiter } =
 const AVATAR_COLORS = ['#6C5CE7', '#00B894', '#0984E3', '#E17055', '#FDCB6E', '#E84393', '#00CEC9', '#D63031'];
 const DUMMY_HASH = bcrypt.hashSync('dummy-' + randomToken(6), 10);
 const TZ_RE = /^[A-Za-z_]{2,24}(\/[A-Za-z0-9_+\-]{1,32}){0,4}$/;
+const GENDERS = ['male', 'female'];
+
+function validateGender(value) {
+  if (value === undefined || value === null) return null;
+  const g = String(value);
+  if (g === '') return null;
+  if (!GENDERS.includes(g)) throw new ApiError(400, 'BAD_GENDER', 'الجنس يجب أن يكون ذكر أو أنثى');
+  return g;
+}
 
 function sanitizeTz(v) {
   const tz = String(v || '').trim();
@@ -156,6 +165,7 @@ router.post('/register', authLimiter, async (req, res) => {
   const body = req.body || {};
   const username = validateUsername(body.username);
   const password = validatePassword(body.password);
+  const gender = validateGender(body.gender);
 
   const existing = await db.query(
     'SELECT id FROM users WHERE username_lower = $1',
@@ -172,9 +182,9 @@ router.post('/register', authLimiter, async (req, res) => {
   const tzLocal = sanitizeTz(body.timezone);
 
   const rows = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, NULL) RETURNING id`,
-    [username, username.toLowerCase(), passwordHash, color, country, country ? 'ip' : null, tzIp, tzLocal, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, gender, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, NULL) RETURNING id`,
+    [username, username.toLowerCase(), passwordHash, color, gender, country, country ? 'ip' : null, tzIp, tzLocal, now]
   );
   const user = {
     id: Number(rows[0].id),
@@ -182,7 +192,47 @@ router.post('/register', authLimiter, async (req, res) => {
     avatar_color: color,
     country: country || null,
     tz_ip: tzIp || null,
-    tz_local: tzLocal || null
+    tz_local: tzLocal || null,
+    gender: gender || null
+  };
+
+  const session = await createSession(user.id, req);
+  issueCookies(res, session);
+  res.status(201).json({ user });
+});
+
+router.post('/guest', authLimiter, async (req, res) => {
+  const body = req.body || {};
+  const username = validateUsername(body.username);
+  const gender = validateGender(body.gender);
+
+  const existing = await db.query(
+    'SELECT id FROM users WHERE username_lower = $1',
+    [username.toLowerCase()]
+  );
+  if (existing.length) throw new ApiError(409, 'USERNAME_TAKEN', 'الاسم ده مستخدم بالفعل');
+
+  const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+  const now = new Date().toISOString();
+  const loc = geo.locationForReq(req);
+  const country = loc ? loc.country : null;
+  const tzIp = loc ? loc.timezone : null;
+  const tzLocal = sanitizeTz(body.timezone);
+
+  const rows = await db.query(
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, gender, is_guest, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, TRUE, $6, $7, $8, $9, $10, NULL) RETURNING id`,
+    [username, username.toLowerCase(), DUMMY_HASH, color, gender, country, country ? 'ip' : null, tzIp, tzLocal, now]
+  );
+  const user = {
+    id: Number(rows[0].id),
+    username,
+    avatar_color: color,
+    country: country || null,
+    tz_ip: tzIp || null,
+    tz_local: tzLocal || null,
+    gender: gender || null,
+    guest: true
   };
 
   const session = await createSession(user.id, req);
@@ -196,7 +246,7 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   const password = String(body.password || '');
 
   const rows = await db.query(
-    'SELECT id, username, password_hash, avatar_color, country, country_source, tz_ip, tz_local FROM users WHERE username_lower = $1',
+    'SELECT id, username, password_hash, avatar_color, country, country_source, tz_ip, tz_local, gender FROM users WHERE username_lower = $1',
     [username.toLowerCase()]
   );
   const user = rows[0];
@@ -233,7 +283,8 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
       avatar_color: user.avatar_color,
       country: finalCountry,
       tz_ip: tzIp || user.tz_ip || null,
-      tz_local: tzLocal || user.tz_local || null
+      tz_local: tzLocal || user.tz_local || null,
+      gender: user.gender || null
     }
   });
 });
@@ -313,6 +364,21 @@ router.post('/logout', async (req, res) => {
 
   if (userId) presence.disconnectUser(userId);
 
+  if (userId) {
+    // حساب الزائر بيتحدف عند الخروج: الأسم بيتشال (يرجع متاح)، بس رسايله ومحادثاته بتفضل.
+    const u = await db.query('SELECT is_guest FROM users WHERE id = $1', [userId]);
+    if (u.length && u[0].is_guest) {
+      await db.query(
+        `UPDATE users SET
+           username = $2,
+           username_lower = $3,
+           deleted_at = $4
+         WHERE id = $1`,
+        [userId, 'مستخدم محذوف', `deleted-${userId}`, new Date().toISOString()]
+      );
+    }
+  }
+
   clearAuthCookies(res);
   res.json({ ok: true });
 });
@@ -371,7 +437,7 @@ router.post('/location', gpsLimiter, requireAuth, async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const rows = await db.query(
-    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, created_at FROM users WHERE id = $1',
+    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, created_at FROM users WHERE id = $1',
     [req.user.id]
   );
   if (!rows.length) throw new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول');

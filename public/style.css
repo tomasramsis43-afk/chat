@@ -237,6 +237,30 @@ svg { flex: none; }
 
 .field { display: flex; flex-direction: column; gap: 7px; }
 .field > span { font-size: var(--fs-2); font-weight: 600; color: var(--text-dim); }
+.field legend { font-size: var(--fs-2); font-weight: 600; color: var(--text-dim); padding: 0; margin: 0; }
+.field fieldset.field { border: 0; }
+.gender-row { display: flex; gap: 10px; }
+.gender-opt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-dim);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.gender-opt input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.gender-opt:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
 
 .input-wrap { position: relative; display: flex; align-items: center; }
 .input-wrap .ic { position: absolute; inset-inline-start: 13px; color: var(--text-soft); pointer-events: none; }
