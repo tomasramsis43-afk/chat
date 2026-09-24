@@ -2,7 +2,6 @@ import { el, esc, avClass, avatarInner, shortStamp, clampText, userFlagHtml } fr
 import { icon as ii } from './icons.js';
 import { store, totalUnread } from './store.js';
 
-const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 let onOpenConv = null;
 let onPickOnline = null;
 let opened = false;
@@ -55,12 +54,6 @@ function convTime(conv) {
   return conv.lastMessageAt ? Date.parse(conv.lastMessageAt) : conv.created_at ? Date.parse(conv.created_at) : 0;
 }
 
-function isActive(conv) {
-  const t = convTime(conv);
-  if (!t) return true;
-  return Date.now() - t < ACTIVE_WINDOW_MS;
-}
-
 export function renderNavDrawer() {
   if (!opened) return;
 
@@ -87,8 +80,7 @@ export function renderNavDrawer() {
   onlineL.appendChild(ofrag);
 
   const convs = [...store.conversations.values()].sort((a, b) => convTime(b) - convTime(a));
-  renderConvList(el('nav-active-list'), el('nav-active-empty'), convs.filter(isActive));
-  renderConvList(el('nav-ended-list'), el('nav-ended-empty'), convs.filter((c) => !isActive(c)));
+  renderConvList(el('nav-convs-list'), el('nav-convs-empty'), convs);
 }
 
 function renderConvList(listEl, emptyEl, convs) {
