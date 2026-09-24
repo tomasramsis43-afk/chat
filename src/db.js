@@ -1,23 +1,33 @@
+'use strict';
 const fs = require('fs');
 const path = require('path');
-const { DatabaseSync } = require('node:sqlite');
-const { Pool } = require('pg');
 const config = require('./config');
+const logger = require('./logger');
 
 let pg = null;
 let sqlite = null;
 const dialect = config.dbUrl ? 'postgres' : 'sqlite';
 
 if (dialect === 'postgres') {
-  pg = new Pool({
+  const { Pool } = require('pg');
+  const poolOpts = {
     connectionString: config.dbUrl,
-    ssl: config.dbSsl !== false ? { rejectUnauthorized: false } : false,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    ssl: config.dbSsl,
+    max: config.pg.max,
+    idleTimeoutMillis: config.pg.idleTimeoutMillis,
+    connectionTimeoutMillis: config.pg.connectionTimeoutMillis
+  };
+  if (config.pg.statementTimeoutMs > 0) poolOpts.statement_timeout = config.pg.statementTimeoutMs;
+  pg = new Pool(poolOpts);
+  // بدون هذا المُستمع، أي خطأ على اتصال خامل في الـ pool يقتل العملية.
+  pg.on('error', (err) => {
+    logger.error('postgres pool idle client error', { code: err && err.code, message: err && err.message });
   });
 } else {
-  const file = config.dbFile ||
+  // node:sqlite يُحمَّل فقط عند استخدام SQLite حتى يبقى PostgreSQL Production متوافقًا مع Node 20.
+  const { DatabaseSync } = require('node:sqlite');
+  const file =
+    config.dbFile ||
     (config.isTest ? ':memory:' : path.join(__dirname, '..', 'data', 'chat.db'));
   if (file !== ':memory:') {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -40,11 +50,21 @@ function translate(sql, params) {
   return { sql: translated, params: order.map((n) => params[n - 1]) };
 }
 
+function truncate(sql) {
+  const s = String(sql || '');
+  return s.length > 400 ? s.slice(0, 400) + '…' : s;
+}
+
 async function query(sql, params = []) {
   const { sql: t, params: p } = translate(sql, params);
   if (dialect === 'postgres') {
-    const r = await pg.query(t, p);
-    return r.rows;
+    try {
+      const r = await pg.query(t, p);
+      return r.rows;
+    } catch (err) {
+      logger.debug('postgres query error', { sql: truncate(t), code: err && err.code, message: err && err.message });
+      throw err;
+    }
   }
   const stmt = sqlite.prepare(t);
   return stmt.all(...p);
@@ -104,17 +124,32 @@ async function transaction(fn) {
 }
 
 async function close() {
-  if (dialect === 'postgres') {
-    await pg.end();
-  } else {
-    sqlite.close();
+  try {
+    if (dialect === 'postgres') {
+      if (pg) await pg.end();
+    } else if (sqlite) {
+      sqlite.close();
+      sqlite = null;
+    }
+  } catch (err) {
+    logger.warn('db close error', { message: err && err.message });
   }
 }
 
 function setForeignKeys(enabled) {
-  if (dialect === 'sqlite') {
+  if (dialect === 'sqlite' && sqlite) {
     sqlite.exec(enabled ? 'PRAGMA foreign_keys = ON;' : 'PRAGMA foreign_keys = OFF;');
   }
+}
+
+function poolStatus() {
+  if (dialect === 'postgres' && pg) {
+    return { total: pg.totalCount, idle: pg.idleCount, waiting: pg.waitingCount };
+  }
+  if (dialect === 'sqlite') {
+    return { total: 1, idle: 1, waiting: 0 };
+  }
+  return null;
 }
 
 module.exports = {
@@ -123,5 +158,6 @@ module.exports = {
   query,
   transaction,
   setForeignKeys,
+  poolStatus,
   close
 };

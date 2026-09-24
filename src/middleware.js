@@ -1,7 +1,17 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { rateLimit } = require('express-rate-limit');
 const config = require('./config');
-const { ApiError, parseCookies } = require('./utils');
+const logger = require('./logger');
+const { createStore } = require('./rate-limit-store');
+const { ApiError, parseCookies, isUniqueViolation } = require('./utils');
+
+function requestId(req, res, next) {
+  const incoming = String(req.headers['x-request-id'] || '').slice(0, 64);
+  req.id = incoming || crypto.randomBytes(8).toString('hex');
+  res.setHeader('X-Request-Id', req.id);
+  next();
+}
 
 function auth(req, res, next) {
   const cookies = parseCookies(req.headers.cookie || '');
@@ -47,7 +57,7 @@ function corsMiddleware(req, res, next) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With, X-Request-Id');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -56,7 +66,7 @@ function corsMiddleware(req, res, next) {
 
 function requireJsonBody(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-  const ct = (req.headers['content-type'] || '');
+  const ct = req.headers['content-type'] || '';
   if (ct && !ct.includes('application/json')) {
     return next(
       new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Content-Type يجب أن يكون application/json')
@@ -71,6 +81,7 @@ function makeLimiter(opts) {
     limit: opts.limit,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    store: opts.store || createStore(),
     keyGenerator: opts.keyGenerator,
     handler: (req, res) =>
       res.status(429).json({
@@ -114,25 +125,39 @@ function notFound(req, res) {
 function errorHandler(err, req, res, next) {
   if (res.headersSent) return next(err);
   if (err instanceof ApiError) {
-    return res
-      .status(err.status)
-      .json({ error: { code: err.code, message: err.message } });
+    if (err.status >= 500) {
+      logger.error('api error', { code: err.code, message: err.message, requestId: req.id, path: req.originalUrl });
+    } else {
+      logger.debug('api error', { code: err.code, message: err.message, requestId: req.id, path: req.originalUrl });
+    }
+    return res.status(err.status).json({ error: { code: err.code, message: err.message } });
   }
   if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
+    logger.warn('bad request body', { type: err.type, status: err.status, requestId: req.id });
     return res
       .status(err.status || 400)
       .json({ error: { code: 'BAD_REQUEST', message: 'طلب غير صالح' } });
   }
-  if (err && err.code && (err.code === '23505' || String(err.message).includes('UNIQUE'))) {
+  if (err && isUniqueViolation(err)) {
     return res
       .status(409)
       .json({ error: { code: 'CONFLICT', message: 'بيانات مكررة' } });
   }
-  console.error('[api]', err);
-  res.status(500).json({ error: { code: 'INTERNAL', message: 'حصل خطأ في السيرفر' } });
+  const errId = crypto.randomBytes(4).toString('hex');
+  logger.error('unhandled error', {
+    id: errId,
+    requestId: req.id,
+    path: req.originalUrl,
+    message: err && err.message,
+    stack: err && err.stack
+  });
+  res.status(500).json({
+    error: { code: 'INTERNAL', message: 'حصل خطأ في السيرفر', id: errId }
+  });
 }
 
 module.exports = {
+  requestId,
   auth,
   requireAuth,
   corsMiddleware,

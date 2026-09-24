@@ -1,0 +1,13 @@
+node_modules
+data
+*.sqlite
+*.db
+.git
+.env
+*.log
+test
+coverage
+.gitignore
+Dockerfile
+README.md
+smoke-fe.cjs

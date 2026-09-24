@@ -1,8 +1,9 @@
+'use strict';
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const config = require('./config');
 const { ApiError, validateMessageContent } = require('./utils');
+const { getStorage, LocalStorageProvider } = require('./storage');
 
 const ALLOWED_TYPES = {
   'image/jpeg': 'jpg',
@@ -51,36 +52,59 @@ function extForMime(mime) {
   return ALLOWED_TYPES[mime] || 'bin';
 }
 
+// تُرجع المفتاح داخل التخزين (id) وليس مسارًا مطلقًا — يدعم Local و S3 معًا.
 function resolveUpload(filename) {
   if (typeof filename !== 'string' || !FILENAME_RE.test(filename)) return null;
-  return path.join(config.uploadDir, filename);
+  return filename;
 }
 
-function storeUpload(buffer, mime) {
+async function storeUpload(buffer, mime) {
   if (!isAllowedMime(mime)) throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'نوع الملف غير مدعوم');
   if (!buffer || buffer.length < 1) throw new ApiError(400, 'BAD_REQUEST', 'الملف فارغ');
   if (buffer.length > config.limits.uploadMaxBytes) {
     throw new ApiError(413, 'TOO_LARGE', 'الملف أكبر من الحد المسموح (5MB)');
   }
-  fs.mkdirSync(config.uploadDir, { recursive: true });
   const filename = crypto.randomBytes(16).toString('hex') + '.' + extForMime(mime);
-  fs.writeFileSync(path.join(config.uploadDir, filename), buffer, { flag: 'wx' });
+  const storage = getStorage();
+  await storage.put(filename, buffer, mime);
   return filename;
 }
 
-function serveUpload(req, res, next) {
-  const abs = resolveUpload(req.params.file);
-  if (!abs || !fs.existsSync(abs)) {
+async function serveUpload(req, res, next) {
+  const key = resolveUpload(req.params.file);
+  if (!key) {
     return next(new ApiError(404, 'NOT_FOUND', 'الملف غير موجود'));
   }
-  const stat = fs.statSync(abs);
-  if (!stat.isFile()) return next(new ApiError(404, 'NOT_FOUND', 'الملف غير موجود'));
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
-  if (isImageMime(mimeFromPath(abs))) {
-    res.sendFile(abs);
-  } else {
-    res.download(abs);
+  const storage = getStorage();
+  try {
+    const stat = await storage.stat(key);
+    if (!stat.exists) {
+      return next(new ApiError(404, 'NOT_FOUND', 'الملف غير موجود'));
+    }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    const mime = mimeFromPath(key);
+    if (isImageMime(mime)) {
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Length', String(stat.size));
+      if (storage instanceof LocalStorageProvider) {
+        res.sendFile(path.join(storage.dir, key));
+      } else {
+        const r = await storage.request('GET', key);
+        r.body.pipe(res);
+      }
+    } else {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment');
+      if (storage instanceof LocalStorageProvider) {
+        res.sendFile(path.join(storage.dir, key));
+      } else {
+        const r = await storage.request('GET', key);
+        r.body.pipe(res);
+      }
+    }
+  } catch (err) {
+    next(err);
   }
 }
 

@@ -45,7 +45,7 @@ router.post('/:id/attachments', requireAuth, uploadLimiter, async (req, res, nex
     const name = sanitizeFileName(req.body.name);
     const buffer = parseBase64Payload(req.body.data);
 
-    const filename = storeUpload(buffer, mime);
+    const filename = await storeUpload(buffer, mime);
     res.status(201).json({
       attachment: {
         url: `/uploads/${filename}`,

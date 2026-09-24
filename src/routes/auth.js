@@ -7,6 +7,7 @@ const presence = require('../presence');
 const google = require('../google');
 const geo = require('../geo');
 const revgeo = require('../revgeo');
+const logger = require('../logger');
 const {
   ApiError,
   parseCookies,
@@ -347,7 +348,7 @@ router.get('/google/callback', googleLimiter, async (req, res) => {
     issueCookies(res, session);
     redirect(true, 'OK');
   } catch (err) {
-    console.error('google callback error:', err.message);
+    logger.error('google callback error', { message: err && err.message, code: err && err.code });
     redirect(false, err.code || 'GOOGLE_FAILED');
   }
 });

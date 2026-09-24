@@ -1,11 +1,16 @@
+'use strict';
 const path = require('path');
 const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
 const compression = require('compression');
 const config = require('./config');
+const db = require('./db');
+const logger = require('./logger');
+const metrics = require('./metrics');
 const { attachSocketIO } = require('./socket');
 const {
+  requestId,
   corsMiddleware,
   requireJsonBody,
   apiLimiter,
@@ -23,6 +28,22 @@ function createServer() {
   if (config.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
+  app.use(requestId);
+  app.use(metrics.recordRequest);
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      logger.http(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`, {
+        method: req.method,
+        url: req.originalUrl,
+        status: res.statusCode,
+        ms: Date.now() - start,
+        requestId: req.id
+      });
+    });
+    next();
+  });
+
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -37,7 +58,17 @@ function createServer() {
           'frame-ancestors': ["'none'"]
         }
       },
-      crossOriginEmbedderPolicy: false
+      crossOriginEmbedderPolicy: false,
+      permissionsPolicy: {
+        permissions: {
+          geolocation: ["'self'"],
+          camera: [],
+          microphone: [],
+          payment: [],
+          usb: [],
+          magnetometer: []
+        }
+      }
     })
   );
   app.use(compression());
@@ -53,9 +84,22 @@ function createServer() {
   app.use(corsMiddleware);
   app.use(requireJsonBody);
 
-  app.use('/api', apiLimiter, require('./middleware').auth);
-
+  // Health checks (خفيفة، بدون استعلامات ثقيلة)
   app.get('/healthz', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
+  app.get('/ready', async (req, res) => {
+    try {
+      await db.query('SELECT 1');
+      res.json({ ok: true, db: true });
+    } catch {
+      res.status(503).json({ ok: false, db: false });
+    }
+  });
+  app.get('/metrics', (req, res) => {
+    res.type('text/plain');
+    res.send(metrics.render({ db: db.poolStatus() }));
+  });
+
+  app.use('/api', apiLimiter, require('./middleware').auth);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);

@@ -1,13 +1,15 @@
+'use strict';
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
 const config = require('./config');
+const logger = require('./logger');
+const metrics = require('./metrics');
 const presence = require('./presence');
 const {
   parseCookies,
   validateId,
   validateNonnegInt,
-  validateMessageContent,
   validateClientMsgId,
   mapMessage
 } = require('./utils');
@@ -42,13 +44,15 @@ function broadcastPresence() {
     const io = presence.getIO();
     if (io) io.emit('presence', list);
   }, 300);
+  if (presenceTimer.unref) presenceTimer.unref();
 }
 
+// ===== Message rate limiting (token bucket) =====
+// في خادم واحد: في الذاكرة. عند التوسع لعدة خوادم يُستبدل بحل موزّع عبر نفس الواجهة.
 const msgBuckets = new Map();
 function messageRateAllow(userId) {
   const now = Date.now();
-  const burst = 10;
-  const perSec = 5;
+  const { burst, perSec } = config.limits.message;
   let b = msgBuckets.get(userId);
   if (!b) {
     b = { tokens: burst, ts: now };
@@ -64,14 +68,7 @@ function messageRateAllow(userId) {
   return false;
 }
 
-const bucketCleanup = setInterval(() => {
-  const cutoff = Date.now() - 60 * 60 * 1000;
-  for (const [userId, b] of msgBuckets) {
-    if (b.ts < cutoff) msgBuckets.delete(userId);
-  }
-}, 10 * 60 * 1000);
-if (bucketCleanup.unref) bucketCleanup.unref();
-
+// ===== Typing throttle =====
 const typingLast = new Map();
 function typingAllowed(userId, convId) {
   const now = Date.now();
@@ -81,6 +78,28 @@ function typingAllowed(userId, convId) {
   typingLast.set(key, now);
   return true;
 }
+
+// ===== Periodic cleanup لمنع التسريبات في الذاكرة + تسجيل لتصفيتها عند الإغلاق =====
+const timers = [];
+function scheduleCleanup(fn, ms) {
+  const t = setInterval(fn, ms);
+  if (t.unref) t.unref();
+  timers.push(t);
+}
+
+scheduleCleanup(() => {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const [userId, b] of msgBuckets) {
+    if (b.ts < cutoff) msgBuckets.delete(userId);
+  }
+}, 10 * 60 * 1000);
+
+scheduleCleanup(() => {
+  const cutoff = Date.now() - 2 * 60 * 1000;
+  for (const [key, ts] of typingLast) {
+    if (ts < cutoff) typingLast.delete(key);
+  }
+}, 5 * 60 * 1000);
 
 async function assertMember(convId, userId) {
   const rows = await db.query(
@@ -113,13 +132,23 @@ function replyWith(fn, caught) {
 
 function attachSocketIO(httpServer) {
   const io = new Server(httpServer, {
-    maxHttpBufferSize: 16 * 1024,
+    maxHttpBufferSize: config.socket.maxHttpBufferSize,
+    pingInterval: config.socket.pingInterval,
+    pingTimeout: config.socket.pingTimeout,
+    upgradeTimeout: config.socket.upgradeTimeout,
     cors: {
       origin: config.allowedOrigins.size ? Array.from(config.allowedOrigins) : false,
       credentials: true
     }
   });
   presence.init(io);
+
+  io.engine.on('connection_error', (socketErr) => {
+    logger.warn('socket engine connection_error', {
+      code: socketErr && socketErr.code,
+      message: socketErr && socketErr.message
+    });
+  });
 
   io.use((socket, next) => {
     try {
@@ -159,12 +188,21 @@ function attachSocketIO(httpServer) {
     const { userCount, ipCount } = presence.register(socket.id, userId, ip);
     socket.join(`user:${userId}`);
 
+    metrics.incGauge('socket_connections_active', {}, 1);
+    metrics.inc('socket_connections_total', {}, 1);
+
     socket.on('disconnect', () => {
       presence.unregister(socket.id, userId, ip);
+      metrics.incGauge('socket_connections_active', {}, -1);
       broadcastPresence();
     });
 
+    socket.on('error', (socketErr) => {
+      logger.debug('socket error', { message: socketErr && socketErr.message, requestId: socket.id });
+    });
+
     if (userCount > presence.usage.maxUserSockets || ipCount > presence.usage.maxIpSockets) {
+      metrics.inc('socket_errors_total', { code: 'TOO_MANY_SESSIONS' }, 1);
       socket.emit('session:error', {
         error: { code: 'TOO_MANY_SESSIONS', message: 'عدد الجلسات المفتوحة تجاوز الحد' }
       });
@@ -181,13 +219,14 @@ function attachSocketIO(httpServer) {
         const data = payload || {};
         const convId = validateId(data.conversationId);
         const cid = validateClientMsgId(data.clientMsgId);
-const contentRaw = typeof data.content === 'string' ? data.content : '';
-const replyToId =
+        const contentRaw = typeof data.content === 'string' ? data.content : '';
+        const replyToId =
           data.replyToId === undefined ? null : validateNonnegInt(data.replyToId);
 
         const media = validateMediaPayload({ ...data, content: contentRaw });
 
         if (!messageRateAllow(userId)) {
+          metrics.inc('socket_message_rate_limited_total', {}, 1);
           return reply(err('RATE_LIMITED', 'إرسال رسائل أسرع من اللازم، انتظر قليلًا'));
         }
 
@@ -203,16 +242,26 @@ const replyToId =
           }
         }
 
+        // insert + تحديث last_message داخل معاملة واحدة لتقليل round-trips وللذرّيّة.
         let inserted;
         try {
           const now = new Date().toISOString();
-          inserted = await db.query(
-            `INSERT INTO messages (conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime, client_msg_id, reply_to_id, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at`,
-            [convId, userId, media.content, media.kind, media.mediaUrl, media.mediaName, media.mediaSize, media.mediaMime, cid, replyToId, now]
-          );
-        } catch (err) {
-          const isDup = err && (err.code === '23505' || String(err.message).includes('UNIQUE'));
+          inserted = await db.transaction(async (tx) => {
+            const r = await tx.query(
+              `INSERT INTO messages (conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime, client_msg_id, reply_to_id, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at`,
+              [convId, userId, media.content, media.kind, media.mediaUrl, media.mediaName, media.mediaSize, media.mediaMime, cid, replyToId, now]
+            );
+            const msgId = Number(r[0].id);
+            await tx.query(
+              'UPDATE conversations SET last_message_id = $1, last_message_at = $2, updated_at = $2 WHERE id = $3',
+              [msgId, now, convId]
+            );
+            return r;
+          });
+        } catch (txErr) {
+          const isDup =
+            txErr && (txErr.code === '23505' || String(txErr.message).includes('UNIQUE'));
           if (isDup && cid) {
             const existing = await db.query(
               'SELECT id, conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime, reply_to_id, created_at, edited_at, deleted_at FROM messages WHERE conversation_id = $1 AND client_msg_id = $2',
@@ -222,7 +271,7 @@ const replyToId =
               return reply({ ok: true, message: mapMessage(existing[0]), duplicate: true });
             }
           }
-          throw err;
+          throw txErr;
         }
 
         const message = {
@@ -236,18 +285,14 @@ const replyToId =
           media_size: media.mediaSize,
           media_mime: media.mediaMime,
           reply_to_id: replyToId,
-          created_at: inserted[0].created_at instanceof Date
-            ? inserted[0].created_at.toISOString()
-            : inserted[0].created_at,
+          created_at:
+            inserted[0].created_at instanceof Date
+              ? inserted[0].created_at.toISOString()
+              : inserted[0].created_at,
           edited_at: null,
           deleted_at: null,
           deleted: false
         };
-
-        await db.query(
-          'UPDATE conversations SET last_message_id = $1, last_message_at = $2, updated_at = $2 WHERE id = $3',
-          [message.id, message.created_at, convId]
-        );
 
         const others = await getOtherMembers(convId, userId);
         for (const otherId of others) {
@@ -255,8 +300,11 @@ const replyToId =
         }
         socket.to(`user:${userId}`).emit('message:new', message);
 
+        metrics.inc('socket_messages_sent_total', {}, 1);
         reply({ ok: true, message });
       } catch (caught) {
+        metrics.inc('socket_message_errors_total', {}, 1);
+        logger.debug('message:send error', { message: caught.message, code: caught.code });
         replyWith(reply, caught);
       }
     });
@@ -287,6 +335,7 @@ const replyToId =
             lastReadId: effective
           });
         }
+        metrics.inc('socket_read_receipts_total', {}, 1);
         reply({ ok: true, lastReadId: effective });
       } catch (caught) {
         replyWith(reply, caught);
@@ -301,6 +350,7 @@ const replyToId =
           if (typeof ack === 'function') ack({ ok: true, throttled: true });
           return;
         }
+        metrics.inc('socket_typing_events_total', {}, 1);
         getOtherMembers(convId, userId).then((others) => {
           presence.emitToUsers(others, 'typing', { conversationId: convId, userId });
         });
@@ -314,4 +364,13 @@ const replyToId =
   return io;
 }
 
-module.exports = { attachSocketIO };
+function shutdown() {
+  if (presenceTimer) {
+    clearTimeout(presenceTimer);
+    presenceTimer = null;
+  }
+  for (const t of timers) clearInterval(t);
+  timers.length = 0;
+}
+
+module.exports = { attachSocketIO, shutdown };
