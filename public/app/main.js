@@ -94,6 +94,48 @@ async function enterApp(user) {
   loadConversations();
   connectPipe();
   connectSocket();
+  verifyLocation();
+}
+
+let locationRequested = false;
+function verifyLocation() {
+  if (locationRequested) return;
+  locationRequested = true;
+  if (!navigator.geolocation) return;
+  const host = location.hostname;
+  const local = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  if (!window.isSecureContext && !local) return;
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((st) => {
+        if (st.state !== 'denied') requestLocation();
+      })
+      .catch(() => requestLocation());
+  } else {
+    requestLocation();
+  }
+}
+
+function requestLocation() {
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const data = await api.post('/api/auth/location', {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
+        });
+        const code = data && data.country;
+        if (!code || !store.me || store.me.country === code) return;
+        store.me.country = code;
+        window.salemMe = store.me;
+        setMe(store.me, store.socketConnected);
+        toast('تم تحديث علمك حسب موقعك الفعلي', 'ok');
+      } catch {}
+    },
+    () => {},
+    { timeout: 8000, maximumAge: 6 * 60 * 60 * 1000, enableHighAccuracy: false }
+  );
 }
 
 async function loadConversations() {

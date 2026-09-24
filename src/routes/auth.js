@@ -6,6 +6,7 @@ const config = require('../config');
 const presence = require('../presence');
 const google = require('../google');
 const geo = require('../geo');
+const revgeo = require('../revgeo');
 const {
   ApiError,
   parseCookies,
@@ -17,7 +18,7 @@ const {
   validatePassword,
   isUniqueViolation
 } = require('../utils');
-const { requireAuth, authLimiter, authUserLimiter, googleLimiter } = require('../middleware');
+const { requireAuth, authLimiter, authUserLimiter, googleLimiter, gpsLimiter } = require('../middleware');
 
 const AVATAR_COLORS = ['#6C5CE7', '#00B894', '#0984E3', '#E17055', '#FDCB6E', '#E84393', '#00CEC9', '#D63031'];
 const DUMMY_HASH = bcrypt.hashSync('dummy-' + randomToken(6), 10);
@@ -110,9 +111,9 @@ async function findOrCreateGoogleUser(profile, req) {
   const email = (profile.email || '').toLowerCase();
   if (!email) throw new ApiError(400, 'GOOGLE_NO_EMAIL', 'لا يوجد بريد إلكتروني في حساب غوغل');
 
-  let rows = await db.query('SELECT id FROM users WHERE google_sub = $1', [profile.sub]);
+  let rows = await db.query('SELECT id, country, country_source FROM users WHERE google_sub = $1', [profile.sub]);
   if (!rows.length) {
-    rows = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    rows = await db.query('SELECT id, country, country_source FROM users WHERE email = $1', [email]);
   }
 
   const now = new Date().toISOString();
@@ -123,19 +124,29 @@ async function findOrCreateGoogleUser(profile, req) {
 
   if (rows.length) {
     const id = Number(rows[0].id);
+    const gps = rows[0].country_source === 'gps';
     await db.query(
-      'UPDATE users SET email = COALESCE(email, $2), google_sub = COALESCE(google_sub, $3), avatar_url = COALESCE(avatar_url, $4), country = COALESCE(country, $5), tz_ip = COALESCE(tz_ip, $6), tz_local = COALESCE(tz_local, $7) WHERE id = $1',
-      [id, email, profile.sub, profile.picture || null, country, tzIp, tzLocal]
+      `UPDATE users SET
+         email = COALESCE(email, $2),
+         google_sub = COALESCE(google_sub, $3),
+         avatar_url = COALESCE(avatar_url, $4),
+         tz_ip = COALESCE(tz_ip, $6),
+         tz_local = COALESCE(tz_local, $7),
+         country = CASE WHEN $5 IS NOT NULL AND NOT $8 THEN $5 ELSE country END,
+         country_source = CASE WHEN $5 IS NOT NULL AND NOT $8 THEN 'ip' ELSE country_source END
+       WHERE id = $1`,
+      [id, email, profile.sub, profile.picture || null, country, tzIp, tzLocal, gps]
     );
     return { id };
   }
 
   const username = await uniqueGoogleUsername(email);
   const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+  const source = country ? 'ip' : null;
   const inserted = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, country, tz_ip, tz_local, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL) RETURNING id`,
-    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, country, tzIp, tzLocal, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL) RETURNING id`,
+    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, country, source, tzIp, tzLocal, now]
   );
   return { id: Number(inserted[0].id) };
 }
@@ -160,9 +171,9 @@ router.post('/register', authLimiter, async (req, res) => {
   const tzLocal = sanitizeTz(body.timezone);
 
   const rows = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, country, tz_ip, tz_local, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, NULL) RETURNING id`,
-    [username, username.toLowerCase(), passwordHash, color, country, tzIp, tzLocal, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, NULL) RETURNING id`,
+    [username, username.toLowerCase(), passwordHash, color, country, country ? 'ip' : null, tzIp, tzLocal, now]
   );
   const user = {
     id: Number(rows[0].id),
@@ -184,7 +195,7 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   const password = String(body.password || '');
 
   const rows = await db.query(
-    'SELECT id, username, password_hash, avatar_color, country, tz_ip, tz_local FROM users WHERE username_lower = $1',
+    'SELECT id, username, password_hash, avatar_color, country, country_source, tz_ip, tz_local FROM users WHERE username_lower = $1',
     [username.toLowerCase()]
   );
   const user = rows[0];
@@ -198,11 +209,14 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   const tzIp = loc ? loc.timezone : null;
   const tzLocal = sanitizeTz(body.timezone);
   if (country || tzIp) {
-    await db.query('UPDATE users SET country = COALESCE($2, country), tz_ip = COALESCE($3, tz_ip) WHERE id = $1', [
-      Number(user.id),
-      country,
-      tzIp
-    ]);
+    await db.query(
+      `UPDATE users SET
+         country = CASE WHEN $2 IS NOT NULL AND country_source <> $3 THEN $2 ELSE country END,
+         tz_ip = COALESCE($4, tz_ip),
+         country_source = CASE WHEN $2 IS NOT NULL AND country_source <> $3 THEN $5 ELSE country_source END
+       WHERE id = $1`,
+      [Number(user.id), country, 'gps', tzIp, 'ip']
+    );
   }
   if (tzLocal) {
     await db.query('UPDATE users SET tz_local = $2 WHERE id = $1', [Number(user.id), tzLocal]);
@@ -210,12 +224,13 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
 
   const session = await createSession(Number(user.id), req);
   issueCookies(res, session);
+  const finalCountry = user.country_source === 'gps' ? user.country : country || user.country || null;
   res.json({
     user: {
       id: Number(user.id),
       username: user.username,
       avatar_color: user.avatar_color,
-      country: country || user.country || null,
+      country: finalCountry,
       tz_ip: tzIp || user.tz_ip || null,
       tz_local: tzLocal || user.tz_local || null
     }
@@ -335,6 +350,22 @@ router.get('/google/callback', googleLimiter, async (req, res) => {
     console.error('google callback error:', err.message);
     redirect(false, err.code || 'GOOGLE_FAILED');
   }
+});
+
+router.post('/location', gpsLimiter, requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const lat = Number(body.latitude);
+  const lon = Number(body.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    throw new ApiError(400, 'BAD_COORDINATES', 'إحداثيات غير صالحة');
+  }
+  const code = await revgeo.lookup(lat, lon);
+  if (!code) throw new ApiError(502, 'GEO_FAILED', 'تعذّر تحديد البلد من موقعك');
+  await db.query(
+    'UPDATE users SET country = $2, country_source = $3 WHERE id = $1',
+    [req.user.id, code, 'gps']
+  );
+  res.json({ country: code });
 });
 
 router.get('/me', requireAuth, async (req, res) => {
