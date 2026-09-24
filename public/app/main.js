@@ -163,10 +163,27 @@ function requestLocation() {
 
 async function loadConversations() {
   try {
-    const data = await api.get('/api/conversations?limit=100');
-    const list = data.conversations || [];
+    const limit = 100;
+    let beforeTs = null;
+    let beforeId = null;
+    const merged = new Map();
+    for (;;) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (beforeTs && beforeId !== null) {
+        qs.set('beforeTs', beforeTs);
+        qs.set('beforeId', String(beforeId));
+      }
+      const data = await api.get('/api/conversations?' + qs.toString());
+      const list = data.conversations || [];
+      for (const c of list) merged.set(Number(c.id), c);
+      if (list.length < limit || !data.nextBeforeTs || data.nextBeforeId === null || data.nextBeforeId === undefined) {
+        break;
+      }
+      beforeTs = data.nextBeforeTs;
+      beforeId = data.nextBeforeId;
+    }
     store.conversations.clear();
-    for (const c of list) store.conversations.set(Number(c.id), c);
+    for (const c of merged.values()) store.conversations.set(Number(c.id), c);
     if (getActiveConvId()) {
       const cur = getConv(getActiveConvId());
       if (cur) {

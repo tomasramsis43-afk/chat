@@ -95,6 +95,22 @@ async function emitGroupUpdate(convId, extra = {}) {
 
 router.get('/', requireAuth, async (req, res) => {
   const limit = clampInt(req.query.limit, 1, 100, 50);
+  const beforeTs = req.query.beforeTs !== undefined ? String(req.query.beforeTs).trim() : null;
+  const beforeId = req.query.beforeId !== undefined ? validateNonnegInt(req.query.beforeId) : null;
+
+  const params = [req.user.id];
+  let where = ' cm.user_id = $1';
+  if (beforeTs && beforeId !== null) {
+    const kTs = params.length + 1;
+    const kId = params.length + 2;
+    where += ` AND (
+      COALESCE(c.last_message_at, c.created_at) < $${kTs}
+      OR (COALESCE(c.last_message_at, c.created_at) = $${kTs} AND c.id < $${kId})
+    )`;
+    params.push(beforeTs, beforeId);
+  }
+  params.push(limit + 1);
+
   const rows = await db.query(
     `SELECT c.id, c.type, c.dm_key, c.name, c.last_message_id, c.last_message_at, c.created_at,
             cm.last_read_message_id, cm.muted_until, cm.archived_at, cm.role AS cm_role,
@@ -116,13 +132,19 @@ router.get('/', requireAuth, async (req, res) => {
      LEFT JOIN conversation_members om
        ON om.conversation_id = c.id AND om.user_id <> $1 AND c.type = 'dm'
      LEFT JOIN users ou ON ou.id = om.user_id
-     WHERE cm.user_id = $1
-     ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC
-     LIMIT $2`,
-    [req.user.id, limit]
+     WHERE${where}
+     ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC
+     LIMIT $${params.length}`,
+    params
   );
 
-  const conversations = rows.map((row) => {
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const last = page[page.length - 1] || null;
+  const nextBeforeTs = hasMore && last ? toIso(last.last_message_at || last.created_at) : null;
+  const nextBeforeId = hasMore && last ? Number(last.id) : null;
+
+  const conversations = page.map((row) => {
     const deleted = !!row.last_deleted_at;
     const online = row.other_id ? presence.isOnline(Number(row.other_id)) : false;
     const mutedUntil = toIso(row.muted_until);
@@ -157,6 +179,7 @@ router.get('/', requireAuth, async (req, res) => {
       lastMessageAt: toIso(row.last_message_at),
       unread: Number(row.unread || 0),
       lastReadMessageId: Number(row.last_read_message_id || 0),
+      created_at: toIso(row.created_at),
       pinned: !!row.cm_pinned_at,
       muted: mutedNow,
       mutedUntil,
@@ -166,7 +189,7 @@ router.get('/', requireAuth, async (req, res) => {
     };
   });
 
-  res.json({ conversations });
+  res.json({ conversations, nextBeforeTs, nextBeforeId });
 });
 
 router.get('/:id/messages', requireAuth, async (req, res) => {

@@ -130,6 +130,90 @@ test('conversations suite', async (t) => {
     assert.equal(gap.data.messages[gap.data.messages.length - 1].id, newestId);
   });
 
+  await t.test('[regression] old idle DM is reachable via cursor pagination when >100 conversations', async () => {
+    const oldPeer = await registerUser('conv_old');
+    const oldDm = await openDm(ali, oldPeer.user.id);
+    assert.equal(oldDm.status, 201);
+    const oldConvId = oldDm.data.conversation.id;
+
+    const now = Date.now();
+    const bulkIds = [];
+    const bulkUserIds = [];
+    for (let i = 0; i < 110; i++) {
+      const un = `conv_bulk_${String(i).padStart(3, '0')}`;
+      await s.db.query(
+        `INSERT INTO users (username, username_lower, password_hash, created_at)
+         VALUES ($1, $2, $3, $4)`,
+        [un, un.toLowerCase(), 'x', new Date(now + i).toISOString()]
+      );
+      const found = await s.db.query('SELECT id FROM users WHERE username_lower = $1', [un.toLowerCase()]);
+      const uid = Number(found[0].id);
+      bulkUserIds.push(uid);
+      const t = new Date(now + (i + 1) * 1000).toISOString();
+      const key = Math.min(ali.user.id, uid) + ':' + Math.max(ali.user.id, uid);
+      const inserted = await s.db.query(
+        `INSERT INTO conversations (type, dm_key, created_by, last_message_at, created_at)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        ['dm', key, ali.user.id, t, t]
+      );
+      const cid = Number(inserted[0].id);
+      const mid = await s.db.query(
+        `INSERT INTO messages (conversation_id, sender_id, content, created_at)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [cid, uid, `bulk-${i}`, t]
+      );
+      await s.db.query('UPDATE conversations SET last_message_id = $2 WHERE id = $1', [cid, Number(mid[0].id)]);
+      await s.db.query(
+        `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
+         VALUES ($1, $2, $3, $4)`,
+        [cid, ali.user.id, 'owner', t]
+      );
+      await s.db.query(
+        `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
+         VALUES ($1, $2, $3, $4)`,
+        [cid, uid, 'member', t]
+      );
+      bulkIds.push(cid);
+    }
+
+    const page1 = await api('GET', '/api/conversations?limit=100', { cookies: ali.cookies });
+    assert.equal(page1.status, 200);
+    assert.equal(page1.data.conversations.length, 100);
+    assert.ok(!page1.data.conversations.some((c) => Number(c.id) === oldConvId), 'old idle DM must not fit in page 1');
+    assert.ok(page1.data.nextBeforeTs !== null);
+    assert.ok(page1.data.nextBeforeId !== null);
+
+    const seen = page1.data.conversations.map((c) => Number(c.id));
+    let guard = 0;
+    let cursorTs = page1.data.nextBeforeTs;
+    let cursorId = page1.data.nextBeforeId;
+    while (cursorTs && cursorId !== null && guard++ < 10) {
+      const page = await api(
+        'GET',
+        `/api/conversations?limit=100&beforeTs=${encodeURIComponent(cursorTs)}&beforeId=${cursorId}`,
+        { cookies: ali.cookies }
+      );
+      assert.equal(page.status, 200);
+      seen.push(...page.data.conversations.map((c) => Number(c.id)));
+      cursorTs = page.data.nextBeforeTs;
+      cursorId = page.data.nextBeforeId;
+    }
+
+    assert.equal(new Set(seen).size, 112, 'all conversations reachable across pages, no duplicates');
+    assert.ok(seen.includes(convId), 'existing dm present');
+    assert.ok(seen.includes(oldConvId), 'old idle DM present via pagination');
+    for (const id of bulkIds) assert.ok(seen.includes(id), `bulk conv ${id} present`);
+
+    for (const cid of bulkIds) {
+      await s.db.query('DELETE FROM conversation_members WHERE conversation_id = $1', [cid]);
+      await s.db.query('DELETE FROM messages WHERE conversation_id = $1', [cid]);
+      await s.db.query('DELETE FROM conversations WHERE id = $1', [cid]);
+    }
+    for (const uid of bulkUserIds) {
+      await s.db.query('DELETE FROM users WHERE id = $1', [uid]);
+    }
+  });
+
   await t.test('read endpoint updates unread counts for the other member', async () => {
     const sentBySara = await api('GET', `/api/conversations/${convId}/messages?limit=100`, {
       cookies: sara.cookies
