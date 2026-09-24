@@ -105,4 +105,22 @@ test('auth suite', async (t) => {
     const res = await api('POST', '/api/auth/refresh');
     assert.equal(res.status, 401);
   });
+
+  await t.test('google start returns 400 when google is not configured', async () => {
+    const res = await api('GET', '/api/auth/google/start');
+    assert.equal(res.status, 400);
+    assert.equal(res.data.error.code, 'GOOGLE_DISABLED');
+  });
+
+  await t.test('google callback redirects with error when disabled', async () => {
+    const s = await startServer();
+    const res = await fetch(`${s.base}/api/auth/google/callback?state=x&code=y`, {
+      redirect: 'manual'
+    });
+    assert.equal(res.status, 302);
+    const loc = new URL(res.headers.get('location'));
+    assert.equal(loc.searchParams.get('auth'), 'google');
+    assert.equal(loc.searchParams.get('status'), 'error');
+    assert.equal(loc.searchParams.get('code'), 'GOOGLE_DISABLED');
+  });
 });

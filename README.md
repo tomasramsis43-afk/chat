@@ -76,6 +76,7 @@ smoke-fe.cjs             E2E عبر Playwright
 | CSRF | SameSite=Strict + رفض Origins غير مسموح (403) + `Content-Type: application/json` إلزامي (415) |
 | Rate limits | `RATE_API` لكل IP، `RATE_AUTH` على /auth، `RATE_AUTH_USER` حسب الاسم، token bucket للرسائل |
 | XSS | CSP بـ `script-src 'self'` (لا inline)، تخزين الرسائل raw، والـ UI يعرضها عبر `textContent` |
+| Google Sign-In (اختياري) | تدفق OAuth Authorization Code على الخادم، PKCE-less عبر `state` مخزّن بالذاكرة، تحقق توقيع `id_token` عبر JWKS + `aud`/`iss` |
 
 ## واجهة API
 
@@ -84,6 +85,8 @@ smoke-fe.cjs             E2E عبر Playwright
 | POST | `/api/auth/register` | إنشاء حساب (يبعث cookies) |
 | POST | `/api/auth/login` | دخول |
 | POST | `/api/auth/refresh` | دوران refresh token |
+| GET | `/api/auth/google/start` | رمز عنوان تفويض غوغل `{url}` (يعمل فقط مع إعداد `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`) |
+| GET | `/api/auth/google/callback` | تبادل الكود، يتحقق من `id_token`، يربط/ينشئ حسابًا بالإيميل، يبعث cookies ويعيد التوجيه للرئيسية |
 | POST | `/api/auth/logout` | إبطال الجلسة + مسح cookies |
 | GET | `/api/auth/me` | المستخدم الحالي |
 | GET | `/api/conversations?limit=` | قائمة المحادثات (آخر رسالة، unread، online) |

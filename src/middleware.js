@@ -95,6 +95,11 @@ const authUserLimiter = makeLimiter({
   }
 });
 
+const googleLimiter = makeLimiter({
+  windowMs: config.limits.auth.windowMs,
+  limit: Math.max(30, config.limits.auth.limit * 3)
+});
+
 function notFound(req, res) {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'الموارد غير موجودة' } });
 }
@@ -129,6 +134,7 @@ module.exports = {
   apiLimiter,
   authLimiter,
   authUserLimiter,
+  googleLimiter,
   notFound,
   errorHandler
 };

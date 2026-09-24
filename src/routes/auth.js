@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const config = require('../config');
 const presence = require('../presence');
+const google = require('../google');
 const {
   ApiError,
   parseCookies,
@@ -12,9 +13,10 @@ const {
   toIso,
   safeUser,
   validateUsername,
-  validatePassword
+  validatePassword,
+  isUniqueViolation
 } = require('../utils');
-const { requireAuth, authLimiter, authUserLimiter } = require('../middleware');
+const { requireAuth, authLimiter, authUserLimiter, googleLimiter } = require('../middleware');
 
 const AVATAR_COLORS = ['#6C5CE7', '#00B894', '#0984E3', '#E17055', '#FDCB6E', '#E84393', '#00CEC9', '#D63031'];
 const DUMMY_HASH = bcrypt.hashSync('dummy-' + randomToken(6), 10);
@@ -69,6 +71,60 @@ async function createSession(userId, req) {
 
 function issueCookies(res, session) {
   setAuthCookies(res, session.accessToken, session.refreshRaw, session.expiresAt);
+}
+
+function baseRoot(req) {
+  if (config.appUrl) return config.appUrl;
+  const host = req.get('host') || 'localhost';
+  let proto = req.secure ? 'https' : 'http';
+  if (config.trustProxy) proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() || 'https';
+  return `${proto}://${host}`;
+}
+
+function googleRedirectUri(req) {
+  return `${baseRoot(req)}/api/auth/google/callback`;
+}
+
+async function uniqueGoogleUsername(email) {
+  const base = google.usernameFromEmail(email);
+  let candidate = base;
+  for (let i = 0; i < 8; i++) {
+    if (i > 0) candidate = `${base.slice(0, 20 - 4)}_${i + 1}`;
+    const rows = await db.query('SELECT id FROM users WHERE username_lower = $1', [
+      candidate.toLowerCase()
+    ]);
+    if (!rows.length) return candidate;
+  }
+  return `${base.slice(0, 16)}_${randomToken(3)}`;
+}
+
+async function findOrCreateGoogleUser(profile) {
+  const email = (profile.email || '').toLowerCase();
+  if (!email) throw new ApiError(400, 'GOOGLE_NO_EMAIL', 'لا يوجد بريد إلكتروني في حساب غوغل');
+
+  let rows = await db.query('SELECT id FROM users WHERE google_sub = $1', [profile.sub]);
+  if (!rows.length) {
+    rows = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+  }
+
+  const now = new Date().toISOString();
+  if (rows.length) {
+    const id = Number(rows[0].id);
+    await db.query(
+      'UPDATE users SET email = COALESCE(email, $2), google_sub = COALESCE(google_sub, $3), avatar_url = COALESCE(avatar_url, $4) WHERE id = $1',
+      [id, email, profile.sub, profile.picture || null]
+    );
+    return { id };
+  }
+
+  const username = await uniqueGoogleUsername(email);
+  const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+  const inserted = await db.query(
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL) RETURNING id`,
+    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, now]
+  );
+  return { id: Number(inserted[0].id) };
 }
 
 router.post('/register', authLimiter, async (req, res) => {
@@ -197,6 +253,42 @@ router.post('/logout', async (req, res) => {
 
   clearAuthCookies(res);
   res.json({ ok: true });
+});
+
+router.get('/google/start', googleLimiter, async (req, res, next) => {
+  try {
+    if (!config.google.enabled) {
+      throw new ApiError(400, 'GOOGLE_DISABLED', 'تسجيل الدخول عبر غوغل غير مفعّل');
+    }
+    const redirectUri = googleRedirectUri(req);
+    const { url } = google.authorizeUrl(redirectUri);
+    res.json({ url });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/google/callback', googleLimiter, async (req, res) => {
+  const root = baseRoot(req);
+  const redirect = (ok, code) =>
+    res.redirect(`${root}/?auth=google&status=${ok ? 'ok' : 'error'}&code=${encodeURIComponent(code)}`);
+
+  if (!config.google.enabled) return redirect(false, 'GOOGLE_DISABLED');
+  if (!google.consumeState(req.query.state)) return redirect(false, 'GOOGLE_BAD_STATE');
+
+  try {
+    const token = await google.exchangeCode(String(req.query.code || ''), googleRedirectUri(req));
+    const profile = await google.verifyIdToken(token.id_token);
+    if (profile.email_verified !== true) return redirect(false, 'GOOGLE_EMAIL_UNVERIFIED');
+
+    const user = await findOrCreateGoogleUser(profile);
+    const session = await createSession(user.id, req);
+    issueCookies(res, session);
+    redirect(true, 'OK');
+  } catch (err) {
+    console.error('google callback error:', err.message);
+    redirect(false, err.code || 'GOOGLE_FAILED');
+  }
 });
 
 router.get('/me', requireAuth, async (req, res) => {

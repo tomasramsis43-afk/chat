@@ -24,6 +24,22 @@ export function avClass(color) {
 
 export function paintAvatar(node, user) {
   if (!node || !user) return;
+  const existingImg = node.querySelector('img.avatar-img');
+  if (user.avatar_url) {
+    if (existingImg) {
+      existingImg.src = user.avatar_url;
+    } else {
+      node.textContent = '';
+      const img = document.createElement('img');
+      img.className = 'avatar-img';
+      img.src = user.avatar_url;
+      img.alt = '';
+      node.appendChild(img);
+    }
+    node.classList.remove('av0', 'av1', 'av2', 'av3', 'av4', 'av5', 'av6', 'av7');
+    return;
+  }
+  if (existingImg) existingImg.remove();
   node.textContent = initials(user.username);
   node.classList.remove('av0', 'av1', 'av2', 'av3', 'av4', 'av5', 'av6', 'av7');
   node.classList.add(avClass(user.avatar_color));

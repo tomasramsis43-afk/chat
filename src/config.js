@@ -25,6 +25,8 @@ if (isProd && !DATABASE_URL) {
 }
 
 const rawDbFile = process.env.DB_FILE || '';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 
 const APP_URL = process.env.APP_URL || '';
 
@@ -67,6 +69,11 @@ module.exports = {
   dbFile: rawDbFile === ':memory:' ? ':memory:' : rawDbFile ? path.resolve(rawDbFile) : null,
   trustProxy: process.env.TRUST_PROXY === 'true',
   appUrl: APP_URL,
+  google: {
+    clientId: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    enabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET)
+  },
   allowedOrigins,
   limits: {
     api: { windowMs: 60 * 1000, limit: Number(process.env.RATE_API || 300) },

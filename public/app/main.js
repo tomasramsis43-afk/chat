@@ -69,6 +69,35 @@ el('register-form').addEventListener('submit', (e) => {
   submitAuth(e.currentTarget, '/api/auth/register');
 });
 
+const GOOGLE_ERRORS = {
+  GOOGLE_DISABLED: 'تسجيل الدخول عبر غوغل غير مفعّل حالياً',
+  GOOGLE_BAD_STATE: 'انتهت مهلة الاتصال بغوغل، حاول مرة أخرى',
+  GOOGLE_EMAIL_UNVERIFIED: 'البريد الإلكتروني غير مؤكّد في حساب غوغل',
+  GOOGLE_FAILED: 'تعذّر تسجيل الدخول عبر غوغل، حاول مرة أخرى'
+};
+
+el('google-btn').addEventListener('click', async () => {
+  const btn = el('google-btn');
+  btn.disabled = true;
+  try {
+    const { url } = await api.get('/api/auth/google/start');
+    window.location.assign(url);
+  } catch (e) {
+    toast(e.message || 'تعذّر بدء تسجيل الدخول عبر غوغل');
+    btn.disabled = false;
+  }
+});
+
+function handleGoogleReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get('auth') || params.get('auth') !== 'google') return;
+  const status = params.get('status');
+  const code = params.get('code') || 'GOOGLE_FAILED';
+  if (status !== 'ok') toast(GOOGLE_ERRORS[code] || GOOGLE_ERRORS.GOOGLE_FAILED);
+  const clean = window.location.pathname + window.location.hash;
+  history.replaceState(null, '', clean);
+}
+
 el('logout-btn').addEventListener('click', async () => {
   try {
     await api.post('/api/auth/logout');
@@ -124,6 +153,11 @@ function convAvatar(c) {
   return { username: c.name || '؟', avatar_color: 'var(--accent)' };
 }
 
+function avatarInner(av) {
+  if (av && av.avatar_url) return `<img class="avatar-img" src="${esc(av.avatar_url)}" alt="">`;
+  return esc(initialsOf(av ? av.username : '؟'));
+}
+
 function renderList() {
   const list = el('conversation-list');
   list.innerHTML = '';
@@ -145,7 +179,7 @@ function renderList() {
     item.type = 'button';
     item.className = 'conv-item' + (c.id === store.activeConvId ? ' active' : '');
     item.innerHTML = `
-      <div class="avatar ${avClass(av.avatar_color)}">${esc(initialsOf(av.username))}</div>
+      <div class="avatar ${avClass(av.avatar_color)}">${avatarInner(av)}</div>
       <div class="conv-info">
         <div class="conv-top">
           <span class="conv-name">${esc(convAvatar(c).username)}</span>
@@ -588,7 +622,7 @@ el('search-input').addEventListener('input', () => {
         item.className = 'search-item';
         const on = store.presence.has(u.id);
         item.innerHTML = `
-          <div class="avatar ${avClass(u.avatar_color)}">${esc(initialsOf(u.username))}</div>
+          <div class="avatar ${avClass(u.avatar_color)}">${avatarInner(u)}</div>
           <div class="search-name">${esc(u.username)}</div>
           <div class="online-dot ${on ? 'on' : ''}"></div>
         `;
@@ -637,6 +671,7 @@ async function bootApp() {
 applyTheme(localStorage.getItem('salem_theme') || 'dark');
 
 (async function init() {
+  handleGoogleReturn();
   try {
     const { user } = await api.get('/api/auth/me');
     store.me = user;

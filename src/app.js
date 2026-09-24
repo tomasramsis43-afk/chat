@@ -30,7 +30,7 @@ function createServer() {
           'script-src': ["'self'"],
           'style-src': ["'self'", 'https://fonts.googleapis.com'],
           'font-src': ['https://fonts.gstatic.com'],
-          'img-src': ["'self'", 'data:'],
+          'img-src': ["'self'", 'data:', 'https://lh3.googleusercontent.com'],
           'connect-src': ["'self'", 'ws:', 'wss:'],
           'frame-ancestors': ["'none'"]
         }

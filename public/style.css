@@ -184,6 +184,44 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .error-text { color: var(--danger); font-size: 13px; margin: 0; }
 .auth-note { text-align: center; color: var(--text-faint); font-size: 12px; margin: 18px 0 0; }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.auth-divider span { white-space: nowrap; }
+
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.google-btn:hover {
+  background: var(--hover);
+  border-color: var(--border-strong);
+}
+.google-btn svg { width: 20px; height: 20px; flex: none; }
+
 /* ============ App layout ============ */
 .app-screen { flex-direction: row; }
 
@@ -321,6 +359,13 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
   font-size: 18px;
   user-select: none;
   background: var(--accent);
+}
+.avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
 }
 
 .av0 { background: #6C5CE7; }
