@@ -342,6 +342,68 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 
 .online-dot.on { background: var(--online); }
 
+.online-wrap {
+  padding: 4px 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.online-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.online-count {
+  color: var(--accent);
+  font-size: 11px;
+  background: var(--accent-soft);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+}
+
+.online-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 170px;
+  overflow-y: auto;
+}
+
+.online-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  text-align: start;
+  transition: background var(--transition);
+}
+
+.online-item:hover { background: var(--bg-elev); }
+
+.online-item .avatar {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.online-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sidebar-foot {
   display: flex;
   align-items: center;

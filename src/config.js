@@ -24,6 +24,8 @@ if (isProd && !DATABASE_URL) {
   errors.push('DATABASE_URL مطلوب في الإنتاج.');
 }
 
+const rawDbFile = process.env.DB_FILE || '';
+
 const APP_URL = process.env.APP_URL || '';
 
 function originOf(u) {
@@ -62,7 +64,7 @@ module.exports = {
   cookieNameAt: 'salem_at',
   cookieNameRt: 'salem_rt',
   dbUrl: DATABASE_URL,
-  dbFile: process.env.DB_FILE ? path.resolve(process.env.DB_FILE) : null,
+  dbFile: rawDbFile === ':memory:' ? ':memory:' : rawDbFile ? path.resolve(rawDbFile) : null,
   trustProxy: process.env.TRUST_PROXY === 'true',
   appUrl: APP_URL,
   allowedOrigins,

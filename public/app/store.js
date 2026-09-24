@@ -2,6 +2,7 @@ export const store = {
   me: null,
   socketConnected: false,
   presence: new Set(),
+  presenceUsers: new Map(),
   activeConvId: null,
   conversations: new Map(),
   convLocalUnread: new Map(),

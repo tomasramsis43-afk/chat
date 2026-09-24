@@ -167,12 +167,38 @@ test('socket suite', async (t) => {
     assert.equal(await statusOnline(), false);
   });
 
-  await t.test('presence event delivers online user ids', async () => {
+  await t.test('presence event delivers online user objects', async () => {
     const c = connectClient(s.base, ali.cookies);
     const evt = await once(c, 'presence');
     c.close();
     assert.ok(Array.isArray(evt));
-    assert.ok(evt.every((id) => Number.isInteger(id)));
+    assert.ok(evt.length >= 1);
+    assert.ok(
+      evt.every((u) => u && Number.isInteger(u.id) && typeof u.username === 'string')
+    );
+  });
+
+  await t.test('presence broadcast reaches already-connected clients with new user', async () => {
+    const pBefore = connectClient(s.base, ali.cookies);
+    await once(pBefore, 'connect');
+    await sleep(400);
+
+    const pEvt = once(pBefore, 'presence');
+    const joiner = connectClient(s.base, sara.cookies);
+    await once(joiner, 'connect');
+
+    const evt = await Promise.race([
+      pEvt,
+      sleep(2000).then(() => null)
+    ]);
+    assert.ok(evt, 'already-connected client must receive a presence broadcast');
+    assert.ok(
+      evt.some((u) => Number(u.id) === sara.user.id),
+      'broadcast must include the newly connected user'
+    );
+    pBefore.close();
+    joiner.close();
+    await sleep(300);
   });
 
   await t.test('message rate limit blocks bursts of spam', async () => {

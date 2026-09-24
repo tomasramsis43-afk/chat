@@ -78,6 +78,8 @@ el('logout-btn').addEventListener('click', async () => {
   store.conversations.clear();
   store.messages.clear();
   store.convLocalUnread.clear();
+  store.presence.clear();
+  store.presenceUsers.clear();
   showAuth();
 });
 
@@ -448,10 +450,47 @@ async function loadOlderMessages(convId) {
 }
 
 /* ================= Realtime ================= */
-function handlePresence(ids) {
-  store.presence = new Set(ids.map(Number));
+function handlePresence(list) {
+  const users = Array.isArray(list) ? list : [];
+  store.presence = new Set(users.map((u) => Number(u.id)));
+  store.presenceUsers = new Map(
+    users
+      .filter((u) => Number(u.id) !== (store.me && store.me.id))
+      .map((u) => [Number(u.id), { id: Number(u.id), username: u.username, avatar_color: u.avatar_color }])
+  );
+  renderOnlineList();
   updateChatStatus();
   renderList();
+}
+
+function renderOnlineList() {
+  const wrap = el('online-wrap');
+  if (!store.presenceUsers.size) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+  el('online-count').textContent = store.presenceUsers.size;
+  const list = el('online-list');
+  list.innerHTML = '';
+  for (const u of store.presenceUsers.values()) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'online-item';
+    const av = document.createElement('div');
+    av.className = 'avatar';
+    paintAvatar(av, u);
+    const name = document.createElement('span');
+    name.className = 'online-name';
+    name.textContent = u.username;
+    const dot = document.createElement('span');
+    dot.className = 'online-dot on';
+    item.appendChild(av);
+    item.appendChild(name);
+    item.appendChild(dot);
+    item.addEventListener('click', () => startDm(u));
+    list.appendChild(item);
+  }
 }
 
 function handleMessage(msg) {

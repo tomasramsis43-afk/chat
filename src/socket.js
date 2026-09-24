@@ -14,14 +14,29 @@ const {
 
 let presenceTimer = null;
 
+async function presencePayload() {
+  const ids = presence.onlineUserIds();
+  if (!ids.length) return [];
+  const ph = ids.map((_, i) => `$${i + 1}`).join(',');
+  const rows = await db.query(
+    `SELECT id, username, avatar_color FROM users WHERE id IN (${ph})`,
+    ids
+  );
+  return rows.map((u) => ({
+    id: Number(u.id),
+    username: u.username,
+    avatar_color: u.avatar_color
+  }));
+}
+
 function broadcastPresence() {
   if (presenceTimer) return;
-  presenceTimer = setTimeout(() => {
+  presenceTimer = setTimeout(async () => {
     presenceTimer = null;
     if (presence.connectedSockets().length === 0) return;
-    const ids = presence.onlineUserIds().map(Number);
+    const list = await presencePayload();
     const io = presence.getIO();
-    if (io) io.emit('presence', ids);
+    if (io) io.emit('presence', list);
   }, 300);
 }
 
@@ -153,7 +168,7 @@ function attachSocketIO(httpServer) {
       return;
     }
 
-    socket.emit('presence', presence.onlineUserIds().map(Number));
+    presencePayload().then((list) => socket.emit('presence', list));
     broadcastPresence();
 
     socket.on('message:send', async (payload, ack) => {
