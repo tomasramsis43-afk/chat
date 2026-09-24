@@ -111,10 +111,17 @@ async function close() {
   }
 }
 
+function setForeignKeys(enabled) {
+  if (dialect === 'sqlite') {
+    sqlite.exec(enabled ? 'PRAGMA foreign_keys = ON;' : 'PRAGMA foreign_keys = OFF;');
+  }
+}
+
 module.exports = {
   dialect,
   isPostgres: dialect === 'postgres',
   query,
   transaction,
+  setForeignKeys,
   close
 };

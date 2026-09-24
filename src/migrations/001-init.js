@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const db = require('../db');
 
 const ts = () => (db.isPostgres ? 'TIMESTAMPTZ' : 'TEXT');
@@ -30,25 +28,29 @@ module.exports = {
   version: 1,
   name: 'init-schema',
   async up() {
-    const T = ts();
-    return db.transaction(async (tx) => {
-      const legacy = await hasLegacyMessages(tx);
-      if (legacy) {
-        await upgradeLegacy(tx);
-      }
+    if (!db.isPostgres) db.setForeignKeys(false);
+    try {
+      return await db.transaction(async (tx) => {
+        const legacy = await hasLegacyMessages(tx);
+        if (legacy) {
+          await upgradeLegacy(tx);
+        }
 
-      await ensureSchema(tx);
+        await ensureSchema(tx);
 
-      const applied = (
-        await tx.query('SELECT version FROM schema_migrations')
-      ).map((r) => Number(r.version));
-      if (!applied.includes(1)) {
-        await tx.query(
-          'INSERT INTO schema_migrations (version, name, applied_at) VALUES ($1, $2, $3)',
-          [1, 'init-schema', new Date().toISOString()]
-        );
-      }
-    });
+        const applied = (
+          await tx.query('SELECT version FROM schema_migrations')
+        ).map((r) => Number(r.version));
+        if (!applied.includes(1)) {
+          await tx.query(
+            'INSERT INTO schema_migrations (version, name, applied_at) VALUES ($1, $2, $3)',
+            [1, 'init-schema', new Date().toISOString()]
+          );
+        }
+      });
+    } finally {
+      if (!db.isPostgres) db.setForeignKeys(true);
+    }
   }
 };
 
@@ -137,8 +139,19 @@ async function upgradeLegacy(tx) {
   const now = new Date().toISOString();
 
   const legacyUsers = await tx.query('SELECT * FROM users');
-  await tx.query(`DROP TABLE IF EXISTS users_new`);
-  await tx.query(`CREATE TABLE users_new (
+  const legacyMessages = await tx.query('SELECT * FROM messages');
+
+  const d = db.isPostgres ? ' CASCADE' : '';
+  await tx.query(`DROP TABLE IF EXISTS room_messages${d}`);
+  await tx.query(`DROP TABLE IF EXISTS room_members${d}`);
+  await tx.query(`DROP TABLE IF EXISTS rooms${d}`);
+  await tx.query(`DROP TABLE IF EXISTS sessions${d}`);
+  await tx.query(`DROP TABLE IF EXISTS messages${d}`);
+  await tx.query(`DROP TABLE IF EXISTS conversations${d}`);
+  await tx.query(`DROP TABLE IF EXISTS conversation_members${d}`);
+  await tx.query(`DROP TABLE IF EXISTS users${d}`);
+
+  await tx.query(`CREATE TABLE users (
     id ${pk()},
     username TEXT NOT NULL,
     username_lower TEXT NOT NULL UNIQUE,
@@ -149,26 +162,7 @@ async function upgradeLegacy(tx) {
     last_seen_at ${T}
   )`);
 
-  for (const u of legacyUsers) {
-    const ucols = await tableColumns(tx, 'users');
-    await tx.query(
-      `INSERT INTO users_new (id, username, username_lower, password_hash, avatar_color, avatar_url, created_at, last_seen_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        u.id,
-        u.username,
-        String(u.username).toLowerCase(),
-        u.password || u.password_hash,
-        u.avatar_color || '#6C5CE7',
-        ucols.has('avatar_url') ? u.avatar_url : null,
-        u.created_at || now,
-        ucols.has('last_seen') ? u.last_seen : null
-      ]
-    );
-  }
-
-  await tx.query(`DROP TABLE IF EXISTS conversations_new`);
-  await tx.query(`CREATE TABLE conversations_new (
+  await tx.query(`CREATE TABLE conversations (
     id ${pk()},
     type TEXT NOT NULL CHECK (type IN ('dm', 'group')),
     dm_key TEXT UNIQUE,
@@ -180,9 +174,8 @@ async function upgradeLegacy(tx) {
     updated_at ${T}
   )`);
 
-  await tx.query(`DROP TABLE IF EXISTS conversation_members_new`);
-  await tx.query(`CREATE TABLE conversation_members_new (
-    conversation_id INTEGER NOT NULL,
+  await tx.query(`CREATE TABLE conversation_members (
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
     joined_at ${T} NOT NULL,
@@ -192,8 +185,7 @@ async function upgradeLegacy(tx) {
     PRIMARY KEY (conversation_id, user_id)
   )`);
 
-  await tx.query(`DROP TABLE IF EXISTS messages_new`);
-  await tx.query(`CREATE TABLE messages_new (
+  await tx.query(`CREATE TABLE messages (
     id ${pk()},
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     sender_id INTEGER NOT NULL REFERENCES users(id),
@@ -207,7 +199,23 @@ async function upgradeLegacy(tx) {
     UNIQUE (conversation_id, client_msg_id)
   )`);
 
-  const legacyMessages = await tx.query('SELECT * FROM messages');
+  for (const u of legacyUsers) {
+    await tx.query(
+      `INSERT INTO users (id, username, username_lower, password_hash, avatar_color, avatar_url, created_at, last_seen_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        u.id,
+        u.username,
+        String(u.username).toLowerCase(),
+        u.password || u.password_hash,
+        u.avatar_color || '#6C5CE7',
+        u.avatar_url || null,
+        u.created_at || now,
+        u.last_seen || u.last_seen_at || null
+      ]
+    );
+  }
+
   const convByKey = new Map();
   const readMax = new Map();
   let convMax = 0;
@@ -218,19 +226,19 @@ async function upgradeLegacy(tx) {
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
     if (!convByKey.has(key)) {
       const r = await tx.query(
-        `INSERT INTO conversations_new (type, dm_key, created_by, created_at)
+        `INSERT INTO conversations (type, dm_key, created_by, created_at)
          VALUES ('dm', $1, $2, $3) RETURNING id`,
         [key, a, now]
       );
       const convId = Number(r[0].id);
       convByKey.set(key, convId);
       await tx.query(
-        `INSERT INTO conversation_members_new (conversation_id, user_id, role, joined_at)
+        `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
          VALUES ($1, $2, 'owner', $3)`,
         [convId, a, now]
       );
       await tx.query(
-        `INSERT INTO conversation_members_new (conversation_id, user_id, role, joined_at)
+        `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
          VALUES ($1, $2, 'member', $3)`,
         [convId, b, now]
       );
@@ -238,7 +246,7 @@ async function upgradeLegacy(tx) {
     const convId = convByKey.get(key);
     const isRead = Number(m.is_read || 0) === 1;
     await tx.query(
-      `INSERT INTO messages_new (id, conversation_id, sender_id, content, kind, created_at, deleted_at)
+      `INSERT INTO messages (id, conversation_id, sender_id, content, kind, created_at, deleted_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         Number(m.id),
@@ -258,7 +266,7 @@ async function upgradeLegacy(tx) {
 
   for (const [userId, lastId] of readMax) {
     await tx.query(
-      `UPDATE conversation_members_new SET last_read_message_id = $1
+      `UPDATE conversation_members SET last_read_message_id = $1
        WHERE user_id = $2 AND last_read_message_id < $1`,
       [lastId, userId]
     );
@@ -267,30 +275,17 @@ async function upgradeLegacy(tx) {
   if (convMax > 0) {
     const lastRows = await tx.query(
       `SELECT m.conversation_id, MAX(m.id) AS max_id
-       FROM messages_new m GROUP BY m.conversation_id`
+       FROM messages m GROUP BY m.conversation_id`
     );
     for (const row of lastRows) {
       const meta = await tx.query(
-        `SELECT created_at FROM messages_new WHERE id = $1`,
+        `SELECT created_at FROM messages WHERE id = $1`,
         [Number(row.max_id)]
       );
       await tx.query(
-        `UPDATE conversations_new SET last_message_id = $1, last_message_at = $2 WHERE id = $3`,
+        `UPDATE conversations SET last_message_id = $1, last_message_at = $2 WHERE id = $3`,
         [Number(row.max_id), meta[0].created_at, Number(row.conversation_id)]
       );
     }
   }
-
-  await tx.query('DROP TABLE IF EXISTS room_messages');
-  await tx.query('DROP TABLE IF EXISTS room_members');
-  await tx.query('DROP TABLE IF EXISTS rooms');
-  await tx.query('DROP TABLE IF EXISTS messages');
-  await tx.query('DROP TABLE IF EXISTS conversations');
-  await tx.query('DROP TABLE IF EXISTS conversation_members');
-  await tx.query('DROP TABLE IF EXISTS users');
-
-  await tx.query('ALTER TABLE users_new RENAME TO users');
-  await tx.query('ALTER TABLE conversations_new RENAME TO conversations');
-  await tx.query('ALTER TABLE conversation_members_new RENAME TO conversation_members');
-  await tx.query('ALTER TABLE messages_new RENAME TO messages');
 }
