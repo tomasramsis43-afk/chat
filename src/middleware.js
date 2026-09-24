@@ -127,9 +127,7 @@ function errorHandler(err, req, res, next) {
       .json({ error: { code: 'CONFLICT', message: 'بيانات مكررة' } });
   }
   console.error('[api]', err);
-  res.status(500).json({
-    error: { code: 'INTERNAL', message: 'حصل خطأ في السيرفر', detail: String(err && err.stack || err && err.message || err) }
-  });
+  res.status(500).json({ error: { code: 'INTERNAL', message: 'حصل خطأ في السيرفر' } });
 }
 
 module.exports = {

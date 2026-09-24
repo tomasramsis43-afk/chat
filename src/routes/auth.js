@@ -127,13 +127,13 @@ async function findOrCreateGoogleUser(profile, req) {
     const gps = rows[0].country_source === 'gps';
     await db.query(
       `UPDATE users SET
-         email = COALESCE(email, $2),
-         google_sub = COALESCE(google_sub, $3),
-         avatar_url = COALESCE(avatar_url, $4),
-         tz_ip = COALESCE(tz_ip, $6),
-         tz_local = COALESCE(tz_local, $7),
-         country = CASE WHEN $5 IS NOT NULL AND NOT $8 THEN $5 ELSE country END,
-         country_source = CASE WHEN $5 IS NOT NULL AND NOT $8 THEN 'ip' ELSE country_source END
+         email = COALESCE(email, CAST($2 AS TEXT)),
+         google_sub = COALESCE(google_sub, CAST($3 AS TEXT)),
+         avatar_url = COALESCE(avatar_url, CAST($4 AS TEXT)),
+         tz_ip = COALESCE(tz_ip, CAST($6 AS TEXT)),
+         tz_local = COALESCE(tz_local, CAST($7 AS TEXT)),
+         country = CASE WHEN CAST($5 AS TEXT) IS NOT NULL AND NOT $8 THEN CAST($5 AS TEXT) ELSE country END,
+         country_source = CASE WHEN CAST($5 AS TEXT) IS NOT NULL AND NOT $8 THEN CAST('ip' AS TEXT) ELSE country_source END
        WHERE id = $1`,
       [id, email, profile.sub, profile.picture || null, country, tzIp, tzLocal, gps]
     );
@@ -211,9 +211,9 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   if (country || tzIp) {
     await db.query(
       `UPDATE users SET
-         country = CASE WHEN $2 IS NOT NULL AND country_source <> $3 THEN $2 ELSE country END,
-         tz_ip = COALESCE($4, tz_ip),
-         country_source = CASE WHEN $2 IS NOT NULL AND country_source <> $3 THEN $5 ELSE country_source END
+         country = CASE WHEN CAST($2 AS TEXT) IS NOT NULL AND country_source <> CAST($3 AS TEXT) THEN CAST($2 AS TEXT) ELSE country END,
+         tz_ip = COALESCE(CAST($4 AS TEXT), tz_ip),
+         country_source = CASE WHEN CAST($2 AS TEXT) IS NOT NULL AND country_source <> CAST($3 AS TEXT) THEN CAST($5 AS TEXT) ELSE country_source END
        WHERE id = $1`,
       [Number(user.id), country, 'gps', tzIp, 'ip']
     );
