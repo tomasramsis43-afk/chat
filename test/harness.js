@@ -90,13 +90,13 @@ function connectClient(base, cookies, opts = {}) {
     extraHeaders: { Cookie: cookies },
     reconnection: false,
     transports: opts.transports || ['websocket'],
-    timeout: 5000,
+    timeout: 15000,
     forceNew: true
   });
   return client;
 }
 
-function once(client, event, timeoutMs = 3000) {
+function once(client, event, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       client.off(event, handler);

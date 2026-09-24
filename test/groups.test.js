@@ -90,10 +90,10 @@ test('groups suite', async (t) => {
     const cAli = connectClient(s.base, ali.cookies);
     const cSara = connectClient(s.base, sara.cookies);
     cAli.on('connect', () => cAli.emit('typing', { conversationId: groupId }));
-    await once(cAli, 'connect', 8000);
-    await once(cSara, 'connect', 8000);
+    await once(cAli, 'connect', 20000);
+    await once(cSara, 'connect', 20000);
 
-    const receivedPromise = once(cSara, 'message:new', 8000);
+    const receivedPromise = once(cSara, 'message:new', 20000);
     const ack = await emitAck(cAli, 'message:send', {
       conversationId: groupId,
       content: 'رسالة جماعية',

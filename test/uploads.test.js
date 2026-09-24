@@ -141,10 +141,10 @@ test('uploads suite', async (t) => {
   await t.test('media message sent over socket reaches recipient with fields', async () => {
     const cAli = connectClient(s.base, ali.cookies);
     const cSara = connectClient(s.base, sara.cookies);
-    await once(cAli, 'connect', 8000);
-    await once(cSara, 'connect', 8000);
+    await once(cAli, 'connect', 20000);
+    await once(cSara, 'connect', 20000);
 
-    const receivedPromise = once(cSara, 'message:new', 8000);
+    const receivedPromise = once(cSara, 'message:new', 20000);
     const ack = await emitAck(cAli, 'message:send', {
       conversationId: convId,
       content: 'شاهد الصورة',

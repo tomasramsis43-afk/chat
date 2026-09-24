@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const geo = require('../src/geo');

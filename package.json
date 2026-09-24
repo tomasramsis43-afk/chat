@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
-    "test:watch": "node --test --watch --test-concurrency=1 \"test/*.test.js\"",
+    "test": "node --require ./test/setup-env.js --test --test-concurrency=1 \"test/*.test.js\"",
+    "test:watch": "node --require ./test/setup-env.js --test --watch --test-concurrency=1 \"test/*.test.js\"",
     "test:e2e": "node smoke-fe.cjs"
   },
   "engines": {

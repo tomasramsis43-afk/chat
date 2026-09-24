@@ -64,7 +64,7 @@ function createServer() {
 
   app.use(
     express.static(path.join(__dirname, '..', 'public'), {
-      maxAge: config.isProd ? '1h' : 0,
+      maxAge: 0,
       etag: true,
       index: 'index.html'
     })
