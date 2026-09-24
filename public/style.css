@@ -1299,6 +1299,10 @@ body.chat-panel .panel {
   text-align: center;
 }
 .conv-empty { margin: auto; width: 100%; }
+.thread-empty .retry-btn {
+  display: block;
+  margin: var(--sp-3) auto 0;
+}
 .just-empty { display: flex; }
 
 .bubble-body { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -131,7 +131,25 @@ async function loadFirstPage(thread) {
     if (store.activeConvId === convId) {
       thread._loading = false;
       preserveLoader();
-      messagesEl.appendChild(elOrCreate('thread-empty', 'تعذّر تحميل الرسائل — أعد المحاولة.'));
+      const d = elOrCreate('thread-empty', 'تعذّر تحميل الرسائل — أعد المحاولة.');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-ghost retry-btn';
+      btn.textContent = 'إعادة المحاولة';
+      btn.addEventListener('click', () => {
+        d.remove();
+        if (thread._loading) return;
+        thread.loaded = false;
+        thread._loading = true;
+        preserveLoader();
+        const sk = document.createElement('div');
+        sk.className = 'thread-skel';
+        sk.innerHTML = skLines(12);
+        messagesEl.appendChild(sk);
+        loadFirstPage(thread);
+      });
+      d.appendChild(btn);
+      messagesEl.appendChild(d);
     }
   }
 }

@@ -200,16 +200,26 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const after = req.query.after !== undefined ? validateNonnegInt(req.query.after) : null;
   const limit = clampInt(req.query.limit, 1, 100, 50);
 
+  const params = [convId];
+  let where = ' conversation_id = $1';
+  if (before !== null) {
+    where += ` AND id < $${params.length + 1}`;
+    params.push(before);
+  }
+  if (after !== null) {
+    where += ` AND id > $${params.length + 1}`;
+    params.push(after);
+  }
+  params.push(limit + 1);
+
   const rows = await db.query(
     `SELECT id, conversation_id, sender_id, content, kind, media_url, media_name, media_size, media_mime,
             client_msg_id, reply_to_id, created_at, edited_at, deleted_at
      FROM messages
-     WHERE conversation_id = $1
-       AND ($2 IS NULL OR id < $2)
-       AND ($3 IS NULL OR id > $3)
+     WHERE${where}
      ORDER BY id DESC
-     LIMIT $4`,
-    [convId, before, after, limit + 1]
+     LIMIT $${params.length}`,
+    params
   );
 
   const hasMore = rows.length > limit;
