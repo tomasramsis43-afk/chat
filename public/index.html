@@ -4,51 +4,53 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c11">
 <title>سالم — شات</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="conn-banner" class="conn-banner" aria-live="polite"><span class="dot"></span><span class="conn-text">يتصل…</span></div>
 
 <!-- ============ Auth ============ -->
-<section id="auth-screen" class="screen auth-screen hidden">
+<section id="auth-screen" class="hidden">
   <div class="auth-card">
     <div class="brand">
-      <div class="brand-mark">س</div>
+      <div class="brand-logo">س</div>
       <h1>سالم</h1>
       <p class="tagline">شبكة صغيرة، محادثات حقيقية</p>
     </div>
-    <div class="tabs" role="tablist">
-      <button class="tab-btn active" type="button" data-tab="login" role="tab">دخول</button>
-      <button class="tab-btn" type="button" data-tab="register" role="tab">حساب جديد</button>
+    <div class="auth-tabs" role="tablist" aria-label="تسجيل الدخول">
+      <button class="auth-tab active" type="button" role="tab" aria-selected="true" data-tab="login">دخول</button>
+      <button class="auth-tab" type="button" role="tab" aria-selected="false" data-tab="register">حساب جديد</button>
     </div>
     <form id="login-form" class="auth-form" novalidate>
       <label class="field">
         <span>الاسم</span>
-        <input type="text" id="login-username" autocomplete="username" required>
+        <input type="text" id="login-username" class="input" placeholder="اسم المستخدم" autocomplete="username" maxlength="40" required>
       </label>
       <label class="field">
         <span>كلمة المرور</span>
-        <input type="password" id="login-password" autocomplete="current-password" required>
+        <input type="password" id="login-password" class="input" placeholder="••••••••" autocomplete="current-password" required>
       </label>
-      <p class="error-text hidden" id="login-error"></p>
-      <button type="submit" class="primary-btn">دخول</button>
+      <p class="auth-error hidden" id="login-error"></p>
+      <button type="submit" class="btn btn-primary btn-block">دخول</button>
     </form>
     <form id="register-form" class="auth-form hidden" novalidate>
       <label class="field">
         <span>اسم المستخدم</span>
-        <input type="text" id="register-username" autocomplete="username" required>
+        <input type="text" id="register-username" class="input" placeholder="3-24 حرفًا" autocomplete="username" maxlength="40" required>
       </label>
       <label class="field">
         <span>كلمة المرور</span>
-        <input type="password" id="register-password" autocomplete="new-password" required>
+        <input type="password" id="register-password" class="input" placeholder="8 أحرف على الأقل" autocomplete="new-password" required>
       </label>
-      <p class="error-text hidden" id="register-error"></p>
-      <button type="submit" class="primary-btn">إنشاء الحساب</button>
+      <p class="auth-error hidden" id="register-error"></p>
+      <button type="submit" class="btn btn-primary btn-block">إنشاء الحساب</button>
     </form>
     <div class="auth-divider"><span>أو</span></div>
     <button id="google-btn" class="google-btn" type="button">
@@ -60,66 +62,103 @@
 </section>
 
 <!-- ============ App ============ -->
-<div id="app-screen" class="screen app-screen hidden">
+<div id="app-screen" class="hidden">
+
   <aside id="sidebar" class="sidebar">
     <header class="sidebar-head">
-      <div class="brand-mark sm">س</div>
-      <span class="brand-name">سالم</span>
-      <button id="theme-btn" class="icon-btn" type="button" title="تبديل المظهر">🌙</button>
+      <div class="sidebar-logo">س</div>
+      <span class="sidebar-title">سالم</span>
+      <button id="theme-btn" class="icon-btn" type="button" data-tip="تبديل المظهر" aria-label="تبديل المظهر"></button>
     </header>
 
-    <div class="search-box">
-      <input type="search" id="search-input" placeholder="ابحث عن شخص..." autocomplete="off">
-      <div id="search-results" class="search-results hidden"></div>
+    <div class="filter-bar" role="tablist" aria-label="فلترة المحادثات">
+      <button class="filter-chip active" type="button" role="tab" aria-selected="true" data-filter="all">الكل</button>
+      <button class="filter-chip" type="button" role="tab" aria-selected="false" data-filter="unread">غير مقروء</button>
+      <button class="filter-chip" type="button" role="tab" aria-selected="false" data-filter="pinned">مثبّت</button>
+      <button class="filter-chip" type="button" role="tab" aria-selected="false" data-filter="groups">المجموعات</button>
     </div>
 
-    <div id="online-wrap" class="online-wrap hidden">
-      <div class="online-title">
-        <span>متصلون الآن</span>
-        <span id="online-count" class="online-count"></span>
+    <div class="search-box">
+      <div class="search-wrap">
+        <span id="search-ic"></span>
+        <input type="search" id="search-input" placeholder="ابحث عن شخص…" autocomplete="off" aria-label="البحث عن مستخدم">
+        <span class="search-spin hidden" id="search-spin"></span>
       </div>
+      <div id="search-results" class="search-results hidden" role="listbox" aria-label="نتائج البحث"></div>
+    </div>
+
+    <div class="online-list-wrap hidden" id="online-wrap">
+      <div class="online-title"><span>متصلون الآن</span><span id="online-count" class="pill"></span></div>
       <div id="online-list" class="online-list"></div>
     </div>
 
-    <div id="conversation-list" class="conversation-list"></div>
+    <div id="conversation-list" class="conv-scroll" role="list" aria-label="المحادثات"></div>
 
     <footer class="sidebar-foot">
-      <div id="my-avatar" class="avatar"></div>
+      <div id="my-avatar" class="avatar md is-online"></div>
       <div class="me-info">
         <span id="my-name" class="me-name"></span>
-        <span id="my-online" class="me-online">متصل</span>
+        <span id="my-online" class="me-status">…</span>
       </div>
-      <button id="logout-btn" class="icon-btn danger" type="button" title="تسجيل الخروج">⏻</button>
+      <button id="logout-btn" class="icon-btn" type="button" data-tip="تسجيل الخروج" aria-label="تسجيل الخروج"></button>
     </footer>
   </aside>
 
   <main id="chat-pane" class="chat-pane">
     <div id="chat-empty" class="chat-empty">
-      <div class="brand-mark lg">س</div>
-      <p>اختار محادثة أو ابدأ بواحدة جديدة</p>
+      <div class="chat-empty-inner">
+        <div class="brand-logo">س</div>
+        <h2>مرحبًا في سالم</h2>
+        <p>ابحث عن الأشخاص في القائمة وابدأ أول محادثة.</p>
+        <button id="empty-new-chat" class="btn btn-primary" type="button">محادثة جديدة</button>
+      </div>
     </div>
 
     <div id="chat-open" class="chat-open hidden">
       <header class="chat-head">
-        <button id="back-btn" class="icon-btn mobile-only" type="button">→</button>
-        <div id="chat-avatar" class="avatar"></div>
-        <div class="chat-head-info">
+        <button id="back-btn" class="icon-btn" type="button" aria-label="العودة للمحادثات"></button>
+        <div id="chat-avatar" class="avatar md"></div>
+        <div id="chat-head-info" class="chat-head-info">
           <span id="chat-name" class="chat-title"></span>
-          <span id="chat-status" class="chat-status"></span>
+          <span id="chat-status" class="chat-status"><span class="dot"></span><span id="chat-status-text">غير متصل</span></span>
         </div>
-        <span id="typing-badge" class="typing-badge hidden">يكتب الآن…</span>
+        <span id="typing-badge" class="typing-badge hidden"><span class="td"></span><span class="td"></span><span class="td"></span> يكتب الآن…</span>
+        <div class="chat-head-actions">
+          <button id="info-btn" class="icon-btn" type="button" data-tip="معلومات" aria-label="معلومات المحادثة"></button>
+        </div>
       </header>
 
       <div id="messages" class="messages">
-        <div id="older-loader" class="older-loader hidden">جارٍ تحميل أقدم…</div>
+        <div id="older-loader" class="older-loader hidden"><span class="spin"></span>جارٍ تحميل أقدم…</div>
       </div>
 
-      <form id="message-form" class="composer">
-        <input type="text" id="message-input" placeholder="اكتب رسالة…" autocomplete="off" maxlength="4000">
-        <button type="submit" id="send-btn" class="send-btn" disabled>↑</button>
-      </form>
+      <button id="jump-pill" class="jump-pill" type="button" aria-label="الانتقال لأحدث رسالة"></button>
+
+      <div class="composer-zone">
+        <div id="reply-bar" class="reply-bar hidden">
+          <span class="reply-bar-text"><span class="reply-bar-name" id="reply-name"></span><span class="reply-bar-body" id="reply-body"></span></span>
+          <button id="reply-cancel" class="icon-btn" type="button" aria-label="إلغاء الرد"></button>
+        </div>
+        <div id="emoji-panel" class="emoji-panel hidden" role="menu" aria-label="إيموجي"></div>
+        <form id="message-form" class="composer" autocomplete="off">
+          <button type="button" id="attach-btn" class="composer-btn" data-tip="مرفقات (قريبًا)" aria-label="إرفاق ملف"></button>
+          <textarea id="message-input" class="composer-box" rows="1" placeholder="اكتب رسالة…" maxlength="4000" aria-label="رسالتك"></textarea>
+          <button type="button" id="emoji-btn" class="composer-btn" data-tip="إيموجي" aria-label="إيموجي"></button>
+          <button type="submit" id="send-btn" class="send-btn" disabled aria-label="إرسال"></button>
+        </form>
+      </div>
     </div>
   </main>
+
+  <aside id="panel" class="panel" role="dialog" aria-label="معلومات المستخدم">
+    <header class="panel-head">
+      <span class="panel-title">معلومات</span>
+      <button id="panel-close" class="icon-btn" type="button" aria-label="إغلاق">
+      </button>
+    </header>
+    <div id="panel-body" class="panel-body"></div>
+  </aside>
+
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

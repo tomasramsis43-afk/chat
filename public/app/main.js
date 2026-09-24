@@ -1,684 +1,494 @@
-import { api, setAuthExpiredHandler, refreshSession } from './api.js';
-import { store, getConv, setConv, getMessages, localUnread, bumpLocalUnread, clearLocalUnread } from './store.js';
-import {
-  connectSocket,
-  disconnectSocket,
-  emitSend,
-  emitRead,
-  emitTyping,
-  isConnected,
-  setSocketHandlers
-} from './socket.js';
-import { el, esc, paintAvatar, timeOf, dayStamp, toast, convPreview, avClass } from './ui.js';
+import { el, q, qa, toast } from './ui.js';
+import { icon as ii } from './icons.js';
+import { api, ApiError, setAuthExpiredHandler } from './api.js';
+import { connectSocket, disconnectSocket, setSocketHandlers, emitSend } from './socket.js';
+import { store, getConv, bumpLocalUnread, isPinned, isMuted, setConvMeta } from './store.js';
+import { initSearch, startSearch } from './search.js';
+import { initSidebar, renderConversations, refreshOneConv, reorderConversations, renderOnlineList, setMe, updateMeStatus } from './sidebar.js';
+import { initMessages, openConversation, appendIncoming, appendPending, confirmPending, rejectPending, handleReadEvent, updateTyping, closeConversation, getActiveConvId, paintHeader, updateChatStatus, scrollToMessageById } from './messages.js';
+import { initComposer, startReply, setConnectedState, closeEmoji } from './composer.js';
+import { initPanel, openPanel, closePanel, refreshPanel } from './panel.js';
+import { showMenu, closeMenu } from './menu.js';
 
-const MSG_PAGE = 100;
-const appScreen = el('app-screen');
+const MAX_UNREAD = 99;
 
-let typingBadgeTimer = null;
-let olderBusy = false;
-
-/* ================= Theme ================= */
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  localStorage.setItem('salem_theme', theme);
-  el('theme-btn').textContent = theme === 'dark' ? '☀️' : '🌙';
-}
-
-el('theme-btn').addEventListener('click', () => {
-  applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-});
-
-/* ================= Auth ================= */
-function switchTab(tab) {
-  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  el('login-form').classList.toggle('hidden', tab !== 'login');
-  el('register-form').classList.toggle('hidden', tab !== 'register');
-}
-
-document.querySelectorAll('.tab-btn').forEach((btn) =>
-  btn.addEventListener('click', () => switchTab(btn.dataset.tab))
-);
-
-async function submitAuth(form, endpoint) {
-  const errBox = form.querySelector('.error-text');
-  errBox.classList.add('hidden');
-  const btn = form.querySelector('button[type=submit]');
-  btn.disabled = true;
-  try {
-    const username = form.querySelector('input[type=text]').value.trim();
-    const password = form.querySelector('input[type=password]').value;
-    const { user } = await api.post(endpoint, { username, password });
-    store.me = user;
-    showApp();
-    await bootApp();
-  } catch (e) {
-    errBox.textContent = e.message;
-    errBox.classList.remove('hidden');
-  } finally {
-    btn.disabled = false;
+initTheme();
+initSearch({ onPick: onPickUser });
+initSidebar({ onOpenConv: openConversationFromList, onConvAction: onConvMenu, onPickOnline: openDmWithUser });
+initMessages({
+  onReplyClick: (m) => startReply(m, senderNameOf(m)),
+  onInfo: () => {
+    const id = getActiveConvId();
+    if (id) openPanel(id);
   }
-}
-
-el('login-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  submitAuth(e.currentTarget, '/api/auth/login');
 });
-
-el('register-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  submitAuth(e.currentTarget, '/api/auth/register');
+initComposer({
+  getActiveConv: getActiveConvId,
+  onSend: sendMessage,
+  onReplyJump: (id) => scrollToReply(id)
 });
+initPanel();
+wireAuth();
 
-const GOOGLE_ERRORS = {
-  GOOGLE_DISABLED: 'تسجيل الدخول عبر غوغل غير مفعّل حالياً',
-  GOOGLE_BAD_STATE: 'انتهت مهلة الاتصال بغوغل، حاول مرة أخرى',
-  GOOGLE_EMAIL_UNVERIFIED: 'البريد الإلكتروني غير مؤكّد في حساب غوغل',
-  GOOGLE_FAILED: 'تعذّر تسجيل الدخول عبر غوغل، حاول مرة أخرى'
-};
+el('back-btn').innerHTML = ii('back', 20);
+el('logout-btn').innerHTML = ii('logout', 18);
+el('theme-btn').innerHTML = ii(currentIcon(), 19);
+el('back-btn').addEventListener('click', () => {
+  closePanel();
+  closeConversation();
+});
+el('theme-btn').addEventListener('click', toggleTheme);
+el('chat-head-info').addEventListener('click', () => {
+  const id = getActiveConvId();
+  if (id) openPanel(id);
+});
+el('info-btn').addEventListener('click', () => {
+  const id = getActiveConvId();
+  if (id) openPanel(id);
+});
+el('empty-new-chat').addEventListener('click', startSearch);
 
-el('google-btn').addEventListener('click', async () => {
-  const btn = el('google-btn');
-  btn.disabled = true;
-  try {
-    const { url } = await api.get('/api/auth/google/start');
-    window.location.assign(url);
-  } catch (e) {
-    toast(e.message || 'تعذّر بدء تسجيل الدخول عبر غوغل');
-    btn.disabled = false;
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeEmoji();
+    closePanel();
+    closeMenu();
+    document.activeElement && document.activeElement.blur();
   }
 });
 
-function handleGoogleReturn() {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.get('auth') || params.get('auth') !== 'google') return;
-  const status = params.get('status');
-  const code = params.get('code') || 'GOOGLE_FAILED';
-  if (status !== 'ok') toast(GOOGLE_ERRORS[code] || GOOGLE_ERRORS.GOOGLE_FAILED);
-  const clean = window.location.pathname + window.location.hash;
-  history.replaceState(null, '', clean);
+setAuthExpiredHandler(() => {
+  toast('انتهت الجلسة — سجّل الدخول مجددًا', 'error');
+  logout();
+});
+
+boot().catch((err) => {
+  console.error(err);
+  showAuth();
+});
+
+function boot() {
+  return (async () => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('auth') === 'google') {
+      const status = params.get('status');
+      history.replaceState({}, '', location.pathname);
+      if (status === 'ok') toast('تم تسجيل الدخول بغوغل', 'ok');
+      else toast(status === 'GOOGLE_DISABLED' ? 'تسجيل الدخول عبر غوغل غير مفعّل' : 'تعذّر تسجيل الدخول بغوغل — أعد المحاولة', 'error');
+    }
+    try {
+      const data = await api.get('/api/auth/me');
+      enterApp(data.user);
+    } catch {
+      showAuth();
+    }
+  })();
 }
 
-el('logout-btn').addEventListener('click', async () => {
+async function enterApp(user) {
+  store.me = user;
+  window.salemMe = user;
+  setMe(user, store.socketConnected);
+  hideAuth();
+  renderConversations();
+  loadConversations();
+  connectPipe();
+  connectSocket();
+}
+
+async function loadConversations() {
+  try {
+    const data = await api.get('/api/conversations?limit=100');
+    const list = data.conversations || [];
+    store.conversations.clear();
+    for (const c of list) store.conversations.set(Number(c.id), c);
+    if (getActiveConvId()) {
+      const cur = getConv(getActiveConvId());
+      if (cur) {
+        paintHeader(cur);
+        updateChatStatus(cur);
+      }
+    }
+    renderConversations();
+    if (getActiveConvId() && !getConv(getActiveConvId())) {
+      closeConversation();
+    }
+  } catch {
+    toast('تعذّر تحميل المحادثات', 'error');
+  }
+}
+
+function openConversationFromList(convId) {
+  closePanel();
+  openConversation(convId);
+}
+
+function openDmWithUser(user) {
+  const convId = findConvWithUser(user.id);
+  if (convId !== null) {
+    openConversationFromList(convId);
+    return;
+  }
+  createDm(user.id).then((id) => id && openConversationFromList(id));
+}
+
+function findConvWithUser(uid) {
+  for (const c of store.conversations.values()) {
+    if (c.other && Number(c.other.id) === Number(uid)) return Number(c.id);
+  }
+  return null;
+}
+
+async function createDm(userId) {
+  try {
+    const data = await api.post('/api/conversations', { userId });
+    const conv = data.conversation || {};
+    if (!conv.other) {
+      const u = store.presenceUsers.get(Number(userId));
+      conv.other = u || { id: Number(userId), username: 'مستخدم', avatar_color: null, online: store.presence.has(Number(userId)) };
+    }
+    store.conversations.set(Number(conv.id), conv);
+    refreshOneConv(conv);
+    return Number(conv.id);
+  } catch (err) {
+    toast(err instanceof ApiError ? err.message : 'تعذّر فتح المحادثة', 'error');
+    return null;
+  }
+}
+
+async function onPickUser(user) {
+  const convId = findConvWithUser(user.id);
+  if (convId !== null) {
+    openConversationFromList(convId);
+    return;
+  }
+  await createDm(user.id).then((id) => id && openConversationFromList(id));
+}
+
+function senderNameOf(m) {
+  if (store.me && m.sender_id === store.me.id) return store.me.username;
+  const c = getConv(m.conversation_id);
+  if (c && c.other && c.other.id === m.sender_id) return c.other.username;
+  return 'مستخدم';
+}
+
+async function sendMessage(convId, content, replyTarget) {
+  const tmpId = `tmp-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const tmp = {
+    id: tmpId,
+    conversation_id: convId,
+    sender_id: store.me?.id,
+    content,
+    kind: 'text',
+    reply_to_id: replyTarget ? replyTarget.id : null,
+    created_at: new Date().toISOString()
+  };
+  appendPending(convId, tmp);
+  const res = await emitSend({ conversationId: convId, content, replyToId: tmp.reply_to_id });
+  if (res.ok) {
+    confirmPending(convId, tmpId, { ...res.message, conversation_id: convId });
+    updateConvWithMessage(convId, res.message, true);
+  } else if (res.error && res.error.code === 'DUPLICATE' && res.message) {
+    confirmPending(convId, tmpId, { ...res.message, conversation_id: convId });
+  } else {
+    rejectPending(convId, tmpId);
+    toast('تعذّر إرسال الرسالة' + (res.error && res.error.message ? ' — ' + res.error.message : ''), 'error');
+  }
+}
+
+function updateConvWithMessage(convId, msg, mine) {
+  const conv = getConv(convId);
+  if (!conv) return;
+  conv.lastMessage = {
+    id: msg.id,
+    content: msg.content,
+    kind: msg.kind || 'text',
+    sender_id: msg.sender_id,
+    created_at: msg.created_at,
+    deleted: !!msg.deleted
+  };
+  conv.lastMessageAt = msg.created_at;
+  store.conversations.set(convId, conv);
+  if (mine && getActiveConvId() === convId) {
+    refreshOneConv(conv);
+    reorderConversations();
+  }
+}
+
+function handleNewMessage(msg) {
+  const convId = Number(msg.conversation_id);
+  let conv = getConv(convId);
+  const mine = store.me && msg.sender_id === store.me.id;
+
+  if (!conv) {
+    loadConversations();
+    return;
+  }
+
+  conv.lastMessage = {
+    id: msg.id,
+    content: msg.content,
+    kind: msg.kind || 'text',
+    sender_id: msg.sender_id,
+    created_at: msg.created_at,
+    deleted: !!msg.deleted
+  };
+  conv.lastMessageAt = msg.created_at;
+  store.conversations.set(convId, conv);
+
+  if (getActiveConvId() === convId) {
+    appendIncoming(msg);
+    refreshOneConv(conv);
+    reorderConversations();
+  } else {
+    if (!mine) bumpLocalUnread(convId);
+    refreshOneConv(conv);
+    reorderConversations();
+  }
+}
+
+function scrollToReply(id) {
+  scrollToMessageById(id, getActiveConvId());
+}
+
+function connectPipe() {
+  setSocketHandlers({
+    onConnect: () => {
+      store.socketConnected = true;
+      setConnectedState();
+      updateMeStatus(true);
+      hideBanner();
+      loadConversations();
+      refreshPanel();
+    },
+    onDisconnect: () => {
+      store.socketConnected = false;
+      setConnectedState();
+      updateMeStatus(false);
+      showBanner('انقطع الاتصال — جاري إعادة المحاولة…');
+    },
+    onConnectError: () => {
+      store.socketConnected = false;
+      setConnectedState();
+      updateMeStatus(false);
+      showBanner('تعذّر الاتصال بالخادم…');
+    },
+    onPresence: (users) => {
+      store.presence = new Set((users || []).map((u) => Number(u.id)));
+      store.presenceUsers = new Map((users || []).map((u) => [Number(u.id), u]));
+      renderOnlineList();
+      updateMeStatus(store.socketConnected);
+      rerenderConvDots();
+      const cur = getConv(getActiveConvId());
+      if (cur) updateChatStatus(cur);
+      refreshPanel();
+    },
+    onMessage: handleNewMessage,
+    onRead: handleReadEvent,
+    onTyping: updateTyping
+  });
+}
+
+function rerenderConvDots() {
+  for (const conv of store.conversations.values()) refreshOneConv(conv);
+  reorderConversations();
+}
+
+function onConvMenu(convId, anchor) {
+  const pin = isPinned(convId);
+  const mute = isMuted(convId);
+  const items = [
+    { icon: 'pin', label: pin ? 'إلغاء التثبيت' : 'تثبيت المحادثة', action: () => togglePin(convId) },
+    { icon: 'bell', label: mute ? 'إلغاء الكتم' : 'كتم الإشعارات', action: () => toggleMute(convId) }
+  ];
+  if (anchor && anchor.getBoundingClientRect) {
+    const r = anchor.getBoundingClientRect();
+    showMenu(items, r.right, r.bottom + 4);
+  } else {
+    showMenu(items, window.innerWidth / 2, window.innerHeight / 2);
+  }
+}
+
+function togglePin(convId) {
+  const next = setConvMeta(convId, { pinned: !isPinned(convId) });
+  refreshOneConv(getConv(convId));
+  reorderConversations();
+  toast(next.pinned ? 'تم تثبيت المحادثة' : 'أزيل التثبيت', 'ok');
+}
+
+function toggleMute(convId) {
+  const next = setConvMeta(convId, { muted: !isMuted(convId) });
+  refreshOneConv(getConv(convId));
+  toast(next.muted ? 'تم كتم المحادثة' : 'تم إلغاء الكتم', 'ok');
+}
+
+function wireAuth() {
+  q('.auth-tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.auth-tab');
+    if (!tab) return;
+    qa('.auth-tab', e.currentTarget).forEach((t) => {
+      t.classList.toggle('active', t === tab);
+      t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+    });
+    el('login-form').classList.toggle('hidden', tab.dataset.tab !== 'login');
+    el('register-form').classList.toggle('hidden', tab.dataset.tab !== 'register');
+  });
+
+  el('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = el('login-username').value.trim();
+    const password = el('login-password').value;
+    const errEl = el('login-error');
+    if (!username || !password) {
+      errEl.textContent = 'املأ الحقلين';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    errEl.classList.add('hidden');
+    const btn = q('button[type=submit]', el('login-form'));
+    btn.disabled = true;
+    btn.textContent = 'دخول…';
+    try {
+      const data = await api.post('/api/auth/login', { username, password });
+      window.salemMe = data.user;
+      store.me = data.user;
+      enterApp(data.user);
+    } catch (err) {
+      errEl.textContent = err instanceof ApiError ? err.message : 'تعذّر تسجيل الدخول';
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'دخول';
+    }
+  });
+
+  el('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = el('register-username').value.trim();
+    const password = el('register-password').value;
+    const errEl = el('register-error');
+    if (username.length < 3 || username.length > 24 || !/^[\p{L}\p{N}_\- .]+$/u.test(username)) {
+      errEl.textContent = 'الاسم 3-24 حرفًا (حروف وأرقام فقط)';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (password.length < 8) {
+      errEl.textContent = 'كلمة المرور 8 أحرف على الأقل';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    errEl.classList.add('hidden');
+    const btn = q('button[type=submit]', el('register-form'));
+    btn.disabled = true;
+    btn.textContent = 'جارٍ الإنشاء…';
+    try {
+      const data = await api.post('/api/auth/register', { username, password });
+      window.salemMe = data.user;
+      store.me = data.user;
+      enterApp(data.user);
+    } catch (err) {
+      errEl.textContent = err instanceof ApiError ? err.message : 'تعذّر إنشاء الحساب';
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'إنشاء الحساب';
+    }
+  });
+
+  el('google-btn').addEventListener('click', async () => {
+    el('google-btn').disabled = true;
+    try {
+      const data = await api.post('/api/auth/google/start');
+      location.href = data.url;
+    } catch (err) {
+      const msg =
+        err instanceof ApiError && err.code === 'GOOGLE_DISABLED'
+          ? 'غوغل غير مفعّل حاليًا — عدّل الإعدادات في لوحة التحكم'
+          : 'تعذّر بدء تسجيل الدخول بغوغل';
+      toast(msg, 'warn');
+      el('google-btn').disabled = false;
+    }
+  });
+
+  el('logout-btn').addEventListener('click', logout);
+}
+
+async function logout() {
+  disconnectSocket();
   try {
     await api.post('/api/auth/logout');
   } catch {}
-  disconnectSocket();
+  resetToAuth();
+  showAuth();
+}
+
+function resetToAuth() {
   store.me = null;
+  window.salemMe = null;
+  store.activeConvId = null;
   store.conversations.clear();
   store.messages.clear();
   store.convLocalUnread.clear();
   store.presence.clear();
   store.presenceUsers.clear();
-  showAuth();
-});
-
-setAuthExpiredHandler(() => {
-  disconnectSocket();
-  store.me = null;
-  showAuth();
-  toast('انتهت الجلسة، سجل دخولك من جديد');
-});
+  closeConversation();
+  closePanel();
+  el('chat-open').classList.add('hidden');
+  el('chat-empty').classList.remove('hidden');
+}
 
 function showAuth() {
   el('auth-screen').classList.remove('hidden');
-  appScreen.classList.add('hidden');
-  document.body.classList.remove('chat-active');
+  el('app-screen').classList.add('hidden');
 }
 
-function showApp() {
+function hideAuth() {
   el('auth-screen').classList.add('hidden');
-  appScreen.classList.remove('hidden');
-  paintAvatar(el('my-avatar'), store.me);
-  el('my-name').textContent = store.me.username;
+  el('app-screen').classList.remove('hidden');
 }
 
-/* ================= Conversation list ================= */
-async function loadConversations() {
-  const { conversations } = await api.get('/api/conversations?limit=100');
-  store.conversations = new Map(conversations.map((c) => [Number(c.id), c]));
-  renderList();
+function openBanner(text) {
+  const b = el('conn-banner');
+  q('.conn-text', b).textContent = text;
+  b.classList.add('show');
 }
 
-function shortStamp(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const today = new Date();
-  const same = today.toDateString() === d.toDateString();
-  if (same) return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-  return d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
+function closeBanner() {
+  const b = el('conn-banner');
+  if (b) b.classList.remove('show');
 }
 
-function convAvatar(c) {
-  if (c.other) return c.other;
-  return { username: c.name || '؟', avatar_color: 'var(--accent)' };
+function showBanner(text) {
+  openBanner(text);
 }
 
-function avatarInner(av) {
-  if (av && av.avatar_url) return `<img class="avatar-img" src="${esc(av.avatar_url)}" alt="">`;
-  return esc(initialsOf(av ? av.username : '؟'));
+function hideBanner() {
+  closeBanner();
 }
 
-function renderList() {
-  const list = el('conversation-list');
-  list.innerHTML = '';
-  const items = [...store.conversations.values()];
-  if (!items.length) {
-    const empty = document.createElement('p');
-    empty.className = 'list-empty';
-    empty.textContent = 'لا توجد محادثات بعد. ابحث عن شخص وابدأ شات.';
-    list.appendChild(empty);
-    return;
-  }
-  for (const c of items) {
-    const mine = c.lastMessage && c.lastMessage.sender_id === store.me.id;
-    const preview = convPreview(c);
-    const badge = (c.unread || 0) + localUnread(Number(c.id));
-    const av = convAvatar(c);
-
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'conv-item' + (c.id === store.activeConvId ? ' active' : '');
-    item.innerHTML = `
-      <div class="avatar ${avClass(av.avatar_color)}">${avatarInner(av)}</div>
-      <div class="conv-info">
-        <div class="conv-top">
-          <span class="conv-name">${esc(convAvatar(c).username)}</span>
-          <span class="conv-time">${esc(shortStamp(c.lastMessageAt))}</span>
-        </div>
-        <div class="conv-bottom">
-          <span class="conv-preview">${esc(preview)}</span>
-          ${badge > 0 ? `<span class="unread-badge">${badge > 99 ? '99+' : badge}</span>` : ''}
-        </div>
-      </div>
-    `;
-    const dot = document.createElement('div');
-    dot.className = 'online-dot' + (c.other && store.presence.has(c.other.id) ? ' on' : '');
-    item.appendChild(dot);
-    item.addEventListener('click', () => openConversation(Number(c.id)));
-    list.appendChild(item);
-  }
+function initTheme() {
+  const saved = localStorage.getItem('salem_theme');
+  const theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+  applyTheme(theme);
 }
 
-function initialsOf(name) {
-  const s = String(name || '').trim();
-  return s ? Array.from(s)[0] : '؟';
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+  renderThemeBtn();
 }
 
-/* ================= Chat pane ================= */
-function otherOf(conv) {
-  return conv.other || { username: conv.name || 'محادثة', avatar_color: 'var(--accent)' };
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('salem_theme', theme);
+  const meta = q('meta[name=theme-color]');
+  if (meta) meta.content = theme === 'dark' ? '#0a0c11' : '#f4f6fb';
 }
 
-function setChatHeader(conv) {
-  const other = otherOf(conv);
-  paintAvatar(el('chat-avatar'), other);
-  el('chat-name').textContent = other.username;
-  updateChatStatus();
+function currentIcon() {
+  return document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon';
 }
 
-function updateChatStatus() {
-  const conv = getConv(store.activeConvId);
-  if (!conv) return;
-  const online = conv.other && store.presence.has(conv.other.id);
-  const status = el('chat-status');
-  status.classList.toggle('on', !!online);
-  status.textContent = online ? 'متصل الآن' : 'غير متصل';
+function renderThemeBtn() {
+  el('theme-btn').innerHTML = ii(currentIcon(), 19);
 }
-
-async function openConversation(convId) {
-  let conv = getConv(convId);
-  if (!conv) {
-    try {
-      conv = { id: convId };
-      setConv(conv);
-    } catch {}
-  }
-  store.activeConvId = convId;
-  clearLocalUnread(convId);
-
-  el('chat-empty').classList.add('hidden');
-  el('chat-open').classList.remove('hidden');
-  document.body.classList.add('chat-active');
-
-  setChatHeader(conv);
-  renderList();
-
-  const cache = getMessages(convId);
-  if (!cache.loaded) {
-    await loadFirstPage(convId);
-  }
-  rerenderMessages(convId, true);
-  markReadIfVisible(true);
-  el('message-input').focus();
-}
-
-async function loadFirstPage(convId) {
-  const cache = getMessages(convId);
-  try {
-    const { messages, nextBefore } = await api.get(`/api/conversations/${convId}/messages?limit=${MSG_PAGE}`);
-    cache.items = messages;
-    cache.nextBefore = nextBefore;
-    cache.loaded = true;
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-function rerenderMessages(convId, toBottom) {
-  const cache = getMessages(convId);
-  const box = el('messages');
-  const other = getConv(convId);
-  const prevTop = box.scrollTop;
-  box.innerHTML = '';
-  let lastDay = null;
-  const frag = document.createDocumentFragment();
-
-  for (const m of cache.items) {
-    const day = dayStamp(m.created_at);
-    if (day && day !== lastDay) {
-      const sep = document.createElement('div');
-      sep.className = 'day-sep';
-      sep.textContent = day;
-      frag.appendChild(sep);
-      lastDay = day;
-    }
-    frag.appendChild(buildMsgRow(m, other));
-  }
-  box.appendChild(frag);
-
-  if (toBottom) {
-    box.scrollTop = box.scrollHeight;
-  } else {
-    box.scrollTop = prevTop;
-  }
-}
-
-function buildMsgRow(m, conv) {
-  const mine = m.sender_id === store.me.id;
-  const row = document.createElement('div');
-  row.className = `msg-row ${mine ? 'mine' : 'theirs'}`;
-  row.dataset.id = String(m.id);
-
-  if (!mine && conv && conv.other) {
-    const av = document.createElement('div');
-    av.className = 'avatar';
-    paintAvatar(av, conv.other);
-    row.appendChild(av);
-  }
-
-  const inner = document.createElement('div');
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  if (m.deleted) {
-    bubble.textContent = m.sender_id === store.me.id ? 'حذفت الرسالة' : 'حُذفت الرسالة';
-    bubble.classList.add('deleted');
-  } else {
-    bubble.textContent = m.content;
-  }
-  inner.appendChild(bubble);
-
-  const meta = document.createElement('div');
-  meta.className = 'msg-meta';
-  const t = document.createElement('span');
-  t.textContent = timeOf(m.created_at);
-  meta.appendChild(t);
-
-  if (mine) {
-    const st = document.createElement('span');
-    st.className = 'msg-state';
-    if (m._pending) {
-      st.textContent = '…';
-      st.classList.add('pending');
-    } else if (conv.otherLastReadId && m.id <= conv.otherLastReadId) {
-      st.textContent = '✓✓';
-      st.classList.add('read');
-    } else {
-      st.textContent = '✓';
-    }
-    meta.appendChild(st);
-  }
-  inner.appendChild(meta);
-  row.appendChild(inner);
-  return row;
-}
-
-async function sendMessage() {
-  const input = el('message-input');
-  const content = input.value.trim();
-  if (!content || !store.activeConvId) return;
-  input.value = '';
-  el('send-btn').disabled = true;
-
-  const clientMsgId = crypto.randomUUID();
-  const convId = store.activeConvId;
-  const tmp = {
-    id: `tmp-${clientMsgId}`,
-    conversation_id: convId,
-    sender_id: store.me.id,
-    content,
-    kind: 'text',
-    clientMsgId,
-    created_at: new Date().toISOString(),
-    _pending: true
-  };
-
-  const cache = getMessages(convId);
-  cache.items.push(tmp);
-  rerenderMessages(convId, true);
-
-  const res = await emitSend({ conversationId: convId, content, clientMsgId });
-  const idx = cache.items.findIndex((m) => m.clientMsgId === clientMsgId);
-  if (res && res.ok) {
-    if (idx >= 0) cache.items[idx] = res.message;
-    updateConvPreview(convId, res.message);
-  } else {
-    const msg = (res && res.error && res.error.message) || 'تعذر الإرسال';
-    toast(msg);
-    if (tmp._pending && idx >= 0) cache.items.splice(idx, 1);
-  }
-  if (store.activeConvId === convId) rerenderMessages(convId, true);
-  markReadIfVisible(true);
-}
-
-el('message-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  sendMessage();
-});
-
-el('message-input').addEventListener('input', () => {
-  el('send-btn').disabled = !inputHasText() || !isConnected();
-});
-
-function inputHasText() {
-  return el('message-input').value.trim().length > 0;
-}
-
-let lastTypingEmit = 0;
-el('message-input').addEventListener('input', () => {
-  const now = Date.now();
-  if (store.activeConvId && now - lastTypingEmit > 1500) {
-    emitTyping(store.activeConvId);
-    lastTypingEmit = now;
-  }
-});
-
-function updateConvPreview(convId, message) {
-  const conv = getConv(convId);
-  if (!conv) return;
-  conv.lastMessage = {
-    id: message.id,
-    content: message.content,
-    sender_id: message.sender_id,
-    created_at: message.created_at,
-    deleted: false
-  };
-  conv.lastMessageAt = message.created_at;
-  setConv(conv);
-  renderList();
-  if (store.activeConvId === convId) setChatHeader(conv);
-}
-
-/* ================= Read receipts ================= */
-function atBottom() {
-  const box = el('messages');
-  return box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-}
-
-function markReadIfVisible(force) {
-  const convId = store.activeConvId;
-  if (!convId) return;
-  const cache = getMessages(convId);
-  const conv = getConv(convId);
-  if (!cache.items.length || !conv) return;
-  if (!force && !atBottom()) return;
-
-  const lastId = cache.items[cache.items.length - 1].id;
-  if (typeof lastId !== 'number') return;
-  const current = Number(conv.lastReadMessageId || 0);
-  if (lastId > current) {
-    conv.lastReadMessageId = lastId;
-    clearLocalUnread(convId);
-    emitRead(convId, lastId);
-    renderList();
-  }
-}
-
-el('messages').addEventListener('scroll', () => {
-  const box = el('messages');
-  if (store.activeConvId && box.scrollTop < 60 && !olderBusy) {
-    loadOlderMessages(store.activeConvId);
-  }
-  if (store.activeConvId && atBottom()) markReadIfVisible(false);
-});
-
-async function loadOlderMessages(convId) {
-  const cache = getMessages(convId);
-  if (olderBusy || !cache.nextBefore) return;
-  olderBusy = true;
-  const loader = el('older-loader');
-  loader.classList.remove('hidden');
-
-  const firstId = cache.items[0] && cache.items[0].id;
-  const oldEl = firstId != null ? document.querySelector(`.msg-row[data-id="${firstId}"]`) : null;
-  const anchor = oldEl ? oldEl.offsetTop - el('messages').scrollTop : null;
-
-  try {
-    const { messages, nextBefore } = await api.get(
-      `/api/conversations/${convId}/messages?before=${cache.nextBefore}&limit=${MSG_PAGE}`
-    );
-    cache.items = [...messages, ...cache.items];
-    cache.nextBefore = nextBefore;
-    if (store.activeConvId === convId) {
-      rerenderMessages(convId, false);
-      if (firstId != null) {
-        const newEl = document.querySelector(`.msg-row[data-id="${firstId}"]`);
-        if (newEl && anchor != null) el('messages').scrollTop = newEl.offsetTop - anchor;
-      }
-    }
-  } catch (e) {
-    toast(e.message);
-  } finally {
-    loader.classList.add('hidden');
-    olderBusy = false;
-  }
-}
-
-/* ================= Realtime ================= */
-function handlePresence(list) {
-  const users = Array.isArray(list) ? list : [];
-  store.presence = new Set(users.map((u) => Number(u.id)));
-  store.presenceUsers = new Map(
-    users
-      .filter((u) => Number(u.id) !== (store.me && store.me.id))
-      .map((u) => [Number(u.id), { id: Number(u.id), username: u.username, avatar_color: u.avatar_color }])
-  );
-  renderOnlineList();
-  updateChatStatus();
-  renderList();
-}
-
-function renderOnlineList() {
-  const wrap = el('online-wrap');
-  if (!store.presenceUsers.size) {
-    wrap.classList.add('hidden');
-    return;
-  }
-  wrap.classList.remove('hidden');
-  el('online-count').textContent = store.presenceUsers.size;
-  const list = el('online-list');
-  list.innerHTML = '';
-  for (const u of store.presenceUsers.values()) {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'online-item';
-    const av = document.createElement('div');
-    av.className = 'avatar';
-    paintAvatar(av, u);
-    const name = document.createElement('span');
-    name.className = 'online-name';
-    name.textContent = u.username;
-    const dot = document.createElement('span');
-    dot.className = 'online-dot on';
-    item.appendChild(av);
-    item.appendChild(name);
-    item.appendChild(dot);
-    item.addEventListener('click', () => startDm(u));
-    list.appendChild(item);
-  }
-}
-
-function handleMessage(msg) {
-  const convId = Number(msg.conversation_id);
-  let conv = getConv(convId);
-  if (!conv) {
-    loadConversations().catch(() => {});
-    conv = { id: convId, other: null };
-    setConv(conv);
-  }
-  updateConvPreview(convId, msg);
-
-  const cache = getMessages(convId);
-  const exists = cache.items.some((m) => m.id === msg.id);
-  if (!exists) cache.items.push(msg);
-
-  if (store.activeConvId === convId) {
-    rerenderMessages(convId, true);
-    markReadIfVisible(true);
-  } else {
-    bumpLocalUnread(convId);
-    renderList();
-  }
-}
-
-function handleRead(ev) {
-  const convId = Number(ev.conversationId);
-  const conv = getConv(convId);
-  if (!conv) return;
-  conv.otherLastReadId = Number(ev.lastReadId) || 0;
-  if (store.activeConvId === convId) rerenderMessages(convId, false);
-}
-
-function handleTyping(ev) {
-  const convId = Number(ev.conversationId);
-  if (convId !== store.activeConvId) return;
-  const conv = getConv(convId);
-  if (!conv || (conv.other && ev.userId !== conv.other.id)) return;
-  const badge = el('typing-badge');
-  badge.classList.remove('hidden');
-  clearTimeout(typingBadgeTimer);
-  typingBadgeTimer = setTimeout(() => badge.classList.add('hidden'), 3000);
-}
-
-setSocketHandlers({
-  onConnect() {
-    store.socketConnected = true;
-    el('my-online').textContent = 'متصل';
-    el('my-online').classList.remove('off');
-    el('send-btn').disabled = !inputHasText();
-  },
-  onDisconnect() {
-    store.socketConnected = false;
-    el('my-online').textContent = 'غير متصل';
-    el('my-online').classList.add('off');
-    el('send-btn').disabled = true;
-  },
-  onConnectError(err) {
-    if (err && err.message === 'UNAUTHORIZED') {
-      refreshSession().then((ok) => {
-        if (!ok) {
-          store.me = null;
-          showAuth();
-        }
-      });
-    }
-  },
-  onPresence: handlePresence,
-  onMessage: handleMessage,
-  onRead: handleRead,
-  onTyping: handleTyping
-});
-
-/* ================= Search / new chat ================= */
-let searchTimer = null;
-el('search-input').addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  const q = el('search-input').value.trim();
-  const box = el('search-results');
-  if (!q) {
-    box.classList.add('hidden');
-    box.innerHTML = '';
-    return;
-  }
-  searchTimer = setTimeout(async () => {
-    try {
-      const { users } = await api.get(`/api/users?q=${encodeURIComponent(q)}&limit=8`);
-      box.innerHTML = '';
-      if (!users.length) {
-        box.innerHTML = '<div class="search-item search-empty">لا توجد نتائج</div>';
-      }
-      for (const u of users) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'search-item';
-        const on = store.presence.has(u.id);
-        item.innerHTML = `
-          <div class="avatar ${avClass(u.avatar_color)}">${avatarInner(u)}</div>
-          <div class="search-name">${esc(u.username)}</div>
-          <div class="online-dot ${on ? 'on' : ''}"></div>
-        `;
-        item.addEventListener('click', () => startDm(u));
-        box.appendChild(item);
-      }
-      box.classList.remove('hidden');
-    } catch (e) {
-      toast(e.message);
-    }
-  }, 250);
-});
-
-async function startDm(user) {
-  el('search-results').classList.add('hidden');
-  el('search-input').value = '';
-  try {
-    const { conversation } = await api.post('/api/conversations', { userId: user.id });
-    const conv = getConv(conversation.id);
-    if (conv && !conv.lastMessage) {
-      conversation.lastMessage = null;
-      conversation.lastMessageAt = null;
-      conversation.lastReadMessageId = 0;
-      conversation.other = conversation.other || { id: user.id, username: user.username, avatar_color: user.avatar_color, online: store.presence.has(user.id) };
-      setConv({ ...conv, ...conversation });
-    } else {
-      setConv(conversation);
-    }
-    renderList();
-    await openConversation(conversation.id);
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-el('back-btn').addEventListener('click', () => {
-  document.body.classList.remove('chat-active');
-});
-
-/* ================= Boot ================= */
-async function bootApp() {
-  await loadConversations();
-  connectSocket();
-}
-
-applyTheme(localStorage.getItem('salem_theme') || 'dark');
-
-(async function init() {
-  handleGoogleReturn();
-  try {
-    const { user } = await api.get('/api/auth/me');
-    store.me = user;
-    showApp();
-    await bootApp();
-  } catch {
-    showAuth();
-    switchTab('login');
-  }
-})();
