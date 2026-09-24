@@ -1029,6 +1029,94 @@ svg { flex: none; }
 .emoji-key:hover { background: var(--surface-2); }
 
 /* ============================================================
+   HAMBURGER NAV DRAWER (online people + conversations)
+   ============================================================ */
+.menu-btn {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.menu-btn:hover { background: var(--surface-2); color: var(--text); }
+.menu-btn.active { background: var(--accent-soft); color: var(--accent); }
+.menu-btn .ic { pointer-events: none; }
+
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(7, 9, 14, 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: menuIn var(--t-fast) var(--ease);
+}
+
+.nav-menu {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(330px, 90vw);
+  background: var(--bg-elev);
+  border-inline-end: 1px solid var(--border);
+  box-shadow: 18px 0 46px rgba(8, 10, 18, 0.28);
+  transform: translateX(-105%);
+  visibility: hidden;
+  transition: transform var(--t-med) var(--ease), visibility 0s linear var(--t-med);
+}
+[dir='rtl'] .nav-menu {
+  transform: translateX(105%);
+  box-shadow: -18px 0 46px rgba(8, 10, 18, 0.28);
+}
+.nav-menu.open {
+  transform: none;
+  visibility: visible;
+  transition: transform var(--t-med) var(--ease);
+}
+
+.nav-head { display: flex; align-items: center; gap: var(--sp-2); padding: 14px var(--sp-4); border-block-end: 1px solid var(--divider); }
+.nav-title { flex: 1; font-weight: 800; font-size: var(--fs-5); }
+.nav-body { flex: 1; overflow-y: auto; padding: var(--sp-3) var(--sp-2) var(--sp-5); overscroll-behavior: contain; }
+
+.nav-section { margin-block-end: var(--sp-4); }
+.nav-section-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 8px; font-size: var(--fs-1); font-weight: 800; color: var(--text-soft); }
+.nav-list { display: flex; flex-direction: column; gap: 1px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  text-align: start;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--t-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-item:hover { background: var(--surface-2); }
+.nav-item.active { background: var(--accent-soft); }
+.nav-item .avatar { position: relative; }
+.nav-item .online-dot { flex: none; }
+.nav-info { flex: 1; min-width: 0; }
+.nav-top { display: flex; align-items: center; gap: 6px; }
+.nav-name { flex: 1; min-width: 0; font-weight: 600; font-size: var(--fs-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-time { font-size: var(--fs-1); color: var(--text-soft); font-weight: 600; flex: none; }
+.nav-preview { display: block; font-size: var(--fs-2); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.nav-preview.mine { color: var(--text-soft); }
+.nav-empty { padding: 10px 12px; color: var(--text-dim); font-size: var(--fs-2); text-align: center; }
+
+/* ============================================================
    CONTEXT PANEL (user profile)
    ============================================================ */
 .panel {

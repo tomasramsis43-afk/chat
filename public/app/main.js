@@ -9,6 +9,7 @@ import { initMessages, openConversation, appendIncoming, appendPending, confirmP
 import { initComposer, startReply, setConnectedState, closeEmoji } from './composer.js';
 import { initPanel, openPanel, closePanel, refreshPanel } from './panel.js';
 import { showMenu, closeMenu } from './menu.js';
+import { initNavDrawer, toggleNavDrawer, closeNavDrawer, renderNavDrawer } from './navdrawer.js';
 
 const MAX_UNREAD = 99;
 
@@ -28,6 +29,7 @@ initComposer({
   onReplyJump: (id) => scrollToReply(id)
 });
 initPanel();
+initNavDrawer({ onOpenConv: openConversationFromList, onPickOnline: openDmWithUser });
 wireAuth();
 
 el('back-btn').innerHTML = ii('back', 20);
@@ -50,6 +52,7 @@ el('empty-new-chat').addEventListener('click', startSearch);
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    closeNavDrawer();
     closeEmoji();
     closePanel();
     closeMenu();
@@ -287,6 +290,7 @@ function handleNewMessage(msg) {
     refreshOneConv(conv);
     reorderConversations();
   }
+  renderNavDrawer();
 }
 
 function scrollToReply(id) {
@@ -321,6 +325,7 @@ function connectPipe() {
       renderOnlineList();
       updateMeStatus(store.socketConnected);
       rerenderConvDots();
+      renderNavDrawer();
       const cur = getConv(getActiveConvId());
       if (cur) updateChatStatus(cur);
       refreshPanel();

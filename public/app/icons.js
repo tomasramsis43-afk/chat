@@ -8,6 +8,7 @@ const P = {
 
 const ICONS = {
   search: () => P.stroke('M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm9.6 4.6-4.3-4.3'),
+  menu: () => P.stroke('M4 6h16M4 12h16M4 18h16'),
   send: () => P.stroke('M12 19V5m0 0-6 6m6-6 6 6'),
   back: () => P.stroke('M15 5l-7 7 7 7'),
   more: () =>

@@ -72,6 +72,7 @@
     </header>
 
     <div class="filter-bar" role="tablist" aria-label="فلترة المحادثات">
+      <button id="menu-btn" class="menu-btn" type="button" aria-label="فتح القائمة" title="القائمة"></button>
       <button class="filter-chip active" type="button" role="tab" aria-selected="true" data-filter="all">الكل</button>
       <button class="filter-chip" type="button" role="tab" aria-selected="false" data-filter="unread">غير مقروء</button>
       <button class="filter-chip" type="button" role="tab" aria-selected="false" data-filter="pinned">مثبّت</button>
@@ -157,6 +158,31 @@
       </button>
     </header>
     <div id="panel-body" class="panel-body"></div>
+  </aside>
+
+  <div id="nav-backdrop" class="nav-backdrop hidden" aria-hidden="true"></div>
+  <aside id="nav-menu" class="nav-menu" role="dialog" aria-label="القائمة" aria-hidden="true">
+    <header class="nav-head">
+      <span class="nav-title">القائمة</span>
+      <button id="nav-close" class="icon-btn" type="button" aria-label="إغلاق القائمة"></button>
+    </header>
+    <div class="nav-body">
+      <div class="nav-section">
+        <div class="nav-section-title"><span>متصلون الآن</span><span id="nav-online-count" class="pill"></span></div>
+        <div id="nav-online-list" class="nav-list"></div>
+        <div id="nav-online-empty" class="nav-empty hidden">لا يوجد متصلون الآن</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title"><span>المحادثات الجارية</span></div>
+        <div id="nav-active-list" class="nav-list"></div>
+        <div id="nav-active-empty" class="nav-empty hidden">لا توجد محادثات جارية</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title"><span>المحادثات السابقة</span></div>
+        <div id="nav-ended-list" class="nav-list"></div>
+        <div id="nav-ended-empty" class="nav-empty hidden">لا توجد محادثات منتهية</div>
+      </div>
+    </div>
   </aside>
 
 </div>
