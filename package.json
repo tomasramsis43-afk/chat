@@ -1,24 +1,37 @@
 {
-  "name": "chat-app",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "salem-chat",
+  "version": "3.0.0",
+  "description": "سالم — منصة شات real-time production-ready (RTL)",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --watch server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:watch": "node --test --watch \"test/*.test.js\"",
+    "test:e2e": "node smoke-fe.cjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "chat",
+    "socket.io",
+    "realtime",
+    "express"
+  ],
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "cors": "^2.8.6",
+    "compression": "^1.7.5",
+    "dotenv": "^16.4.5",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
     "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
   }
 }

@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>سالم | شات</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>سالم — شات</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -11,74 +12,104 @@
 </head>
 <body>
 
-<!-- ============ AUTH SCREEN ============ -->
-<div id="auth-screen" class="screen">
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<!-- ============ Auth ============ -->
+<section id="auth-screen" class="screen auth-screen hidden">
   <div class="auth-card">
     <div class="brand">
       <div class="brand-mark">س</div>
       <h1>سالم</h1>
       <p class="tagline">شبكة صغيرة، محادثات حقيقية</p>
     </div>
-
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="login">دخول</button>
-      <button class="tab-btn" data-tab="register">حساب جديد</button>
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" type="button" data-tab="login" role="tab">دخول</button>
+      <button class="tab-btn" type="button" data-tab="register" role="tab">حساب جديد</button>
     </div>
-
-    <form id="login-form" class="auth-form">
-      <input type="text" id="login-username" placeholder="الاسم" autocomplete="username" required>
-      <input type="password" id="login-password" placeholder="كلمة المرور" autocomplete="current-password" required>
-      <p class="error-text" id="login-error"></p>
+    <form id="login-form" class="auth-form" novalidate>
+      <label class="field">
+        <span>الاسم</span>
+        <input type="text" id="login-username" autocomplete="username" required>
+      </label>
+      <label class="field">
+        <span>كلمة المرور</span>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+      </label>
+      <p class="error-text hidden" id="login-error"></p>
       <button type="submit" class="primary-btn">دخول</button>
     </form>
-
-    <form id="register-form" class="auth-form hidden">
-      <input type="text" id="register-username" placeholder="اختار اسم مستخدم" autocomplete="username" required>
-      <input type="password" id="register-password" placeholder="كلمة مرور (4 أحرف فأكتر)" autocomplete="new-password" required>
-      <p class="error-text" id="register-error"></p>
+    <form id="register-form" class="auth-form hidden" novalidate>
+      <label class="field">
+        <span>اسم المستخدم</span>
+        <input type="text" id="register-username" autocomplete="username" required>
+      </label>
+      <label class="field">
+        <span>كلمة المرور</span>
+        <input type="password" id="register-password" autocomplete="new-password" required>
+      </label>
+      <p class="error-text hidden" id="register-error"></p>
       <button type="submit" class="primary-btn">إنشاء الحساب</button>
     </form>
+    <p class="auth-note">كلمة المرور 8 أحرف على الأقل، الاسم 3-24 حرفًا.</p>
   </div>
-</div>
+</section>
 
-<!-- ============ APP SCREEN ============ -->
-<div id="app-screen" class="screen hidden">
-
-  <!-- Members list view -->
-  <div id="members-view" class="view">
-    <header class="top-bar">
-      <div class="me">
-        <div class="avatar" id="my-avatar"></div>
-        <span id="my-name"></span>
-      </div>
-      <button id="logout-btn" class="icon-btn" title="خروج">⏻</button>
+<!-- ============ App ============ -->
+<div id="app-screen" class="screen app-screen hidden">
+  <aside id="sidebar" class="sidebar">
+    <header class="sidebar-head">
+      <div class="brand-mark sm">س</div>
+      <span class="brand-name">سالم</span>
+      <button id="theme-btn" class="icon-btn" type="button" title="تبديل المظهر">🌙</button>
     </header>
-    <div class="section-label">الأعضاء</div>
-    <ul id="members-list" class="members-list"></ul>
-    <p id="no-members" class="empty-state hidden">لسه محدش انضم غيرك. ابعت اللينك لصحابك.</p>
-  </div>
 
-  <!-- Conversation view -->
-  <div id="chat-view" class="view hidden">
-    <header class="top-bar chat-header">
-      <button id="back-btn" class="icon-btn">→</button>
-      <div class="avatar small" id="chat-avatar"></div>
-      <div class="chat-header-info">
-        <span id="chat-username"></span>
-        <span id="chat-status" class="status-text"></span>
+    <div class="search-box">
+      <input type="search" id="search-input" placeholder="ابحث عن شخص..." autocomplete="off">
+      <div id="search-results" class="search-results hidden"></div>
+    </div>
+
+    <div id="conversation-list" class="conversation-list"></div>
+
+    <footer class="sidebar-foot">
+      <div id="my-avatar" class="avatar"></div>
+      <div class="me-info">
+        <span id="my-name" class="me-name"></span>
+        <span id="my-online" class="me-online">متصل</span>
       </div>
-    </header>
-    <div id="messages" class="messages"></div>
-    <div id="typing-indicator" class="typing-indicator hidden">بيكتب...</div>
-    <form id="message-form" class="message-bar">
-      <input type="text" id="message-input" placeholder="اكتب رسالة..." autocomplete="off">
-      <button type="submit" class="send-btn">↑</button>
-    </form>
-  </div>
+      <button id="logout-btn" class="icon-btn danger" type="button" title="تسجيل الخروج">⏻</button>
+    </footer>
+  </aside>
 
+  <main id="chat-pane" class="chat-pane">
+    <div id="chat-empty" class="chat-empty">
+      <div class="brand-mark lg">س</div>
+      <p>اختار محادثة أو ابدأ بواحدة جديدة</p>
+    </div>
+
+    <div id="chat-open" class="chat-open hidden">
+      <header class="chat-head">
+        <button id="back-btn" class="icon-btn mobile-only" type="button">→</button>
+        <div id="chat-avatar" class="avatar"></div>
+        <div class="chat-head-info">
+          <span id="chat-name" class="chat-title"></span>
+          <span id="chat-status" class="chat-status"></span>
+        </div>
+        <span id="typing-badge" class="typing-badge hidden">يكتب الآن…</span>
+      </header>
+
+      <div id="messages" class="messages">
+        <div id="older-loader" class="older-loader hidden">جارٍ تحميل أقدم…</div>
+      </div>
+
+      <form id="message-form" class="composer">
+        <input type="text" id="message-input" placeholder="اكتب رسالة…" autocomplete="off" maxlength="4000">
+        <button type="submit" id="send-btn" class="send-btn" disabled>↑</button>
+      </form>
+    </div>
+  </main>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="app.js"></script>
+<script type="module" src="app/main.js"></script>
 </body>
 </html>
