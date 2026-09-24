@@ -1029,7 +1029,7 @@ svg { flex: none; }
 .emoji-key:hover { background: var(--surface-2); }
 
 /* ============================================================
-   HAMBURGER NAV DRAWER (online people + conversations)
+   SIDE MENU (hamburger drawer: links to sections)
    ============================================================ */
 .menu-btn {
   flex: none;
@@ -1049,9 +1049,11 @@ svg { flex: none; }
 
 .sidebar-view-bar { display: flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-3) 10px; }
 .sidebar-view-title { font-size: var(--fs-1); font-weight: 800; color: var(--text-soft); }
+#online-wrap { display: none; }
 body.sidebar-view-online #conversation-list { display: none; }
 body.sidebar-view-online .filter-chip { display: none; }
-body.sidebar-view-convs #online-wrap { display: none; }
+body.sidebar-view-online #online-wrap { display: block; }
+.online-empty { padding: 10px 6px; color: var(--text-dim); font-size: var(--fs-2); text-align: center; }
 
 .nav-backdrop {
   position: fixed;

@@ -246,14 +246,12 @@ export function removeConvNode(convId) {
 }
 
 export function renderOnlineList() {
-  const wrap = el('online-wrap');
   const list = el('online-list');
   if (!store.presenceUsers.size) {
-    wrap.classList.add('hidden');
+    el('online-count').textContent = '0';
     list.innerHTML = '';
     return;
   }
-  wrap.classList.remove('hidden');
   el('online-count').textContent = store.presenceUsers.size;
   list.innerHTML = '';
   const frag = document.createDocumentFragment();

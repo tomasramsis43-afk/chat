@@ -32,8 +32,6 @@ initComposer({
 });
 initPanel();
 initNavDrawer({
-  onOpenConv: openConversationFromList,
-  onPickOnline: openDmWithUser,
   onShowSection: showSidebarView
 });
 initGroupDialog({ onCreated: onGroupCreated });
