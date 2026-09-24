@@ -13,7 +13,7 @@
   - CSRF عبر `SameSite=Strict` + فحص Origin + إلزام `Content-Type: application/json` للتغييرات.
   - Rate limiting منفصل (API عام / Auth / لكل مستخدم) + Token-bucket للرسائل + حد أقصى للجلسات (`TOO_MANY_SESSIONS`).
   - Helmet + CSP صارم بلا inline scripts، `X-Powered-By` معطّل، SQL parameterized بالكامل.
-  - فحص أمان-il fail-fast: في `production` لا يقلع السيرفر بدون `JWT_SECRET` و`DATABASE_URL` و`APP_URL`.
+  - فحص أمان-il fail-fast: في `production` لا يقلع السيرفر بدون `JWT_SECRET` و`DATABASE_URL`.
 - **قابلية توسع**: DB دفعية مزدوجة **PostgreSQL** (إنتاج) / **SQLite** (`node:sqlite` بدون تبعيات، للاختبار والتطوير)، Migrations مرقمة، Cursor pagination، Deduplication برسائل `client_msg_id`.
 - **واجهة RTL حديثة**: بدون build step، ES modules، dark/light، متجاوبة للموبايل، Optimistic send، إعادة اتصال تلقائية للـ socket.
 
@@ -32,7 +32,7 @@ npm run dev        # http://localhost:3000  (SQLite في data/chat.db)
 
 ```bash
 cp .env.example .env
-# املأ: NODE_ENV=production, APP_URL, JWT_SECRET (≥32 حرفًا), DATABASE_URL (PostgreSQL)
+# املأ: NODE_ENV=production, JWT_SECRET (≥32 حرفًا), DATABASE_URL (PostgreSQL)  — وAPP_URL اختياري
 npm start
 ```
 

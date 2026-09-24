@@ -25,9 +25,6 @@ if (isProd && !DATABASE_URL) {
 }
 
 const APP_URL = process.env.APP_URL || '';
-if (isProd && !APP_URL) {
-  errors.push('APP_URL مطلوب في الإنتاج (مثال: https://salem.onrender.com).');
-}
 
 function originOf(u) {
   try {
