@@ -1047,6 +1047,12 @@ svg { flex: none; }
 .menu-btn.active { background: var(--accent-soft); color: var(--accent); }
 .menu-btn .ic { pointer-events: none; }
 
+.sidebar-view-bar { display: flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-3) 10px; }
+.sidebar-view-title { font-size: var(--fs-1); font-weight: 800; color: var(--text-soft); }
+body.sidebar-view-online #conversation-list { display: none; }
+body.sidebar-view-online .filter-chip { display: none; }
+body.sidebar-view-convs #online-wrap { display: none; }
+
 .nav-backdrop {
   position: fixed;
   inset: 0;
@@ -1088,6 +1094,28 @@ svg { flex: none; }
 
 .nav-section { margin-block-end: var(--sp-4); }
 .nav-section-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 8px; font-size: var(--fs-1); font-weight: 800; color: var(--text-soft); }
+.nav-tab {
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  color: var(--text-soft);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.nav-tab:hover { background: var(--surface-2); color: var(--text); }
+.nav-tab-side { display: inline-flex; align-items: center; gap: 8px; }
+.nav-tab-arrow {
+  width: 8px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 0 2px 2px;
+  transform: rotate(135deg);
+  opacity: 0.55;
+}
 .nav-list { display: flex; flex-direction: column; gap: 1px; }
 
 .nav-item {

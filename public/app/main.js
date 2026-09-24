@@ -29,8 +29,26 @@ initComposer({
   onReplyJump: (id) => scrollToReply(id)
 });
 initPanel();
-initNavDrawer({ onOpenConv: openConversationFromList, onPickOnline: openDmWithUser });
+initNavDrawer({
+  onOpenConv: openConversationFromList,
+  onPickOnline: openDmWithUser,
+  onShowSection: showSidebarView
+});
 wireAuth();
+
+function showSidebarView(mode) {
+  const isOnline = mode === 'online';
+  const isConvs = mode === 'convs';
+  const full = mode === 'full';
+  document.body.classList.toggle('sidebar-view-online', isOnline);
+  document.body.classList.toggle('sidebar-view-convs', isConvs);
+  el('sidebar-view-bar').classList.toggle('hidden', full);
+  if (!full) {
+    el('sidebar-view-title').textContent = isOnline ? 'متصلون الآن' : 'المحادثات';
+    el('sidebar-view-back').innerHTML = ii('back', 18);
+  }
+}
+el('sidebar-view-back').addEventListener('click', () => showSidebarView('full'));
 
 el('back-btn').innerHTML = ii('back', 20);
 el('logout-btn').innerHTML = ii('logout', 18);
@@ -93,6 +111,7 @@ async function enterApp(user) {
   window.salemMe = user;
   setMe(user, store.socketConnected);
   hideAuth();
+  showSidebarView('full');
   renderConversations();
   loadConversations();
   connectPipe();
@@ -478,6 +497,7 @@ function resetToAuth() {
   store.convLocalUnread.clear();
   store.presence.clear();
   store.presenceUsers.clear();
+  showSidebarView('full');
   closeConversation();
   closePanel();
   el('chat-open').classList.add('hidden');

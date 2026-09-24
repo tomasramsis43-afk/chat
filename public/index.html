@@ -79,6 +79,11 @@
       <button class="filter-chip" type="button" role="tab" aria-selected="false" data-filter="groups">المجموعات</button>
     </div>
 
+    <div id="sidebar-view-bar" class="sidebar-view-bar hidden">
+      <button id="sidebar-view-back" class="icon-btn" type="button" aria-label="العودة للعرض الكامل"></button>
+      <span id="sidebar-view-title" class="sidebar-view-title"></span>
+    </div>
+
     <div class="search-box">
       <div class="search-wrap">
         <span id="search-ic"></span>
@@ -168,12 +173,18 @@
     </header>
     <div class="nav-body">
       <div class="nav-section">
-        <div class="nav-section-title"><span>متصلون الآن</span><span id="nav-online-count" class="pill"></span></div>
+        <button id="nav-online-tab" class="nav-section-title nav-tab" type="button" aria-label="عرض المتصلون الآن">
+          <span>متصلون الآن</span>
+          <span class="nav-tab-side"><span id="nav-online-count" class="pill"></span><span class="nav-tab-arrow"></span></span>
+        </button>
         <div id="nav-online-list" class="nav-list"></div>
         <div id="nav-online-empty" class="nav-empty hidden">لا يوجد متصلون الآن</div>
       </div>
       <div class="nav-section">
-        <div class="nav-section-title"><span>المحادثات</span></div>
+        <button id="nav-convs-tab" class="nav-section-title nav-tab" type="button" aria-label="عرض المحادثات">
+          <span>المحادثات</span>
+          <span class="nav-tab-arrow"></span>
+        </button>
         <div id="nav-convs-list" class="nav-list"></div>
         <div id="nav-convs-empty" class="nav-empty hidden">لا توجد محادثات بعد</div>
       </div>

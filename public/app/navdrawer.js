@@ -4,6 +4,7 @@ import { store, totalUnread } from './store.js';
 
 let onOpenConv = null;
 let onPickOnline = null;
+let onShowSection = null;
 let opened = false;
 
 function mount() {
@@ -13,11 +14,20 @@ function mount() {
 export function initNavDrawer(opts = {}) {
   onOpenConv = opts.onOpenConv || null;
   onPickOnline = opts.onPickOnline || null;
+  onShowSection = opts.onShowSection || null;
   el('menu-btn').innerHTML = ii('menu', 20);
   el('nav-close').innerHTML = ii('close', 18);
   el('menu-btn').addEventListener('click', toggleNavDrawer);
   el('nav-close').addEventListener('click', closeNavDrawer);
   el('nav-backdrop').addEventListener('click', closeNavDrawer);
+  el('nav-online-tab').addEventListener('click', () => {
+    closeNavDrawer();
+    if (onShowSection) onShowSection('online');
+  });
+  el('nav-convs-tab').addEventListener('click', () => {
+    closeNavDrawer();
+    if (onShowSection) onShowSection('convs');
+  });
 }
 
 export function toggleNavDrawer() {
