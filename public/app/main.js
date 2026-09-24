@@ -1,4 +1,4 @@
-import { el, q, qa, toast } from './ui.js';
+import { el, q, qa, toast, sendTimeZone } from './ui.js';
 import { icon as ii } from './icons.js';
 import { api, ApiError, setAuthExpiredHandler } from './api.js';
 import { connectSocket, disconnectSocket, setSocketHandlers, emitSend } from './socket.js';
@@ -349,7 +349,7 @@ function wireAuth() {
     btn.disabled = true;
     btn.textContent = 'دخول…';
     try {
-      const data = await api.post('/api/auth/login', { username, password });
+      const data = await api.post('/api/auth/login', { username, password, timezone: sendTimeZone() });
       window.salemMe = data.user;
       store.me = data.user;
       enterApp(data.user);
@@ -382,7 +382,7 @@ function wireAuth() {
     btn.disabled = true;
     btn.textContent = 'جارٍ الإنشاء…';
     try {
-      const data = await api.post('/api/auth/register', { username, password });
+      const data = await api.post('/api/auth/register', { username, password, timezone: sendTimeZone() });
       window.salemMe = data.user;
       store.me = data.user;
       enterApp(data.user);

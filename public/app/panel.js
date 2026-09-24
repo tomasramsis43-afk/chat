@@ -1,4 +1,4 @@
-import { el, esc, avClass, avatarInner, toast, flagHtml } from './ui.js';
+import { el, esc, avClass, avatarInner, toast, userFlagHtml } from './ui.js';
 import { icon as ii } from './icons.js';
 import { store, getConv, isMuted, setConvMeta } from './store.js';
 
@@ -26,7 +26,9 @@ export function openPanel(convId) {
   const user = {
     username: name,
     avatar_color: other.avatar_color,
-    country: (isGroup ? null : other.country) || (puser && puser.country),
+    country: isGroup ? null : other.country || ((puser && puser.country) || null),
+    tz_ip: isGroup ? null : other.tz_ip || ((puser && puser.tz_ip) || null),
+    tz_local: isGroup ? null : other.tz_local || ((puser && puser.tz_local) || null),
     avatar_url: (puser && puser.avatar_url) || other.avatar_url
   };
   const muted = isMuted(convId);
@@ -35,7 +37,7 @@ export function openPanel(convId) {
   body.innerHTML = `
     <div class="panel-hero">
       <span class="avatar xl ${avClass(user.avatar_color)} ${online ? 'is-online' : ''}">${avatarInner(user)}</span>
-      <h3 class="panel-name">${esc(name)}${flagHtml(isGroup ? null : other.country)}</h3>
+      <h3 class="panel-name">${esc(name)}${userFlagHtml(isGroup ? null : other)}</h3>
       <p class="panel-status ${online ? 'on' : ''}">${online ? 'متصل الآن' : 'غير متصل'}</p>
       ${isGroup ? '<p class="panel-sub">محادثة جماعية</p>' : ''}
     </div>

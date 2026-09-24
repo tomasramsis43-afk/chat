@@ -21,6 +21,13 @@ const { requireAuth, authLimiter, authUserLimiter, googleLimiter } = require('..
 
 const AVATAR_COLORS = ['#6C5CE7', '#00B894', '#0984E3', '#E17055', '#FDCB6E', '#E84393', '#00CEC9', '#D63031'];
 const DUMMY_HASH = bcrypt.hashSync('dummy-' + randomToken(6), 10);
+const TZ_RE = /^[A-Za-z_]{2,24}(\/[A-Za-z0-9_+\-]{1,32}){0,4}$/;
+
+function sanitizeTz(v) {
+  const tz = String(v || '').trim();
+  if (!tz || tz.length > 80 || !TZ_RE.test(tz)) return null;
+  return tz;
+}
 
 const router = Router();
 
@@ -109,12 +116,16 @@ async function findOrCreateGoogleUser(profile, req) {
   }
 
   const now = new Date().toISOString();
-  const country = geo.countryForReq(req);
+  const loc = geo.locationForReq(req);
+  const country = loc ? loc.country : null;
+  const tzIp = loc ? loc.timezone : null;
+  const tzLocal = sanitizeTz(req.body && req.body.timezone);
+
   if (rows.length) {
     const id = Number(rows[0].id);
     await db.query(
-      'UPDATE users SET email = COALESCE(email, $2), google_sub = COALESCE(google_sub, $3), avatar_url = COALESCE(avatar_url, $4), country = COALESCE(country, $5) WHERE id = $1',
-      [id, email, profile.sub, profile.picture || null, country]
+      'UPDATE users SET email = COALESCE(email, $2), google_sub = COALESCE(google_sub, $3), avatar_url = COALESCE(avatar_url, $4), country = COALESCE(country, $5), tz_ip = COALESCE(tz_ip, $6), tz_local = COALESCE(tz_local, $7) WHERE id = $1',
+      [id, email, profile.sub, profile.picture || null, country, tzIp, tzLocal]
     );
     return { id };
   }
@@ -122,9 +133,9 @@ async function findOrCreateGoogleUser(profile, req) {
   const username = await uniqueGoogleUsername(email);
   const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
   const inserted = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, country, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL) RETURNING id`,
-    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, country, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, email, google_sub, country, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL) RETURNING id`,
+    [username, username.toLowerCase(), DUMMY_HASH, color, profile.picture || null, email, profile.sub, country, tzIp, tzLocal, now]
   );
   return { id: Number(inserted[0].id) };
 }
@@ -143,14 +154,24 @@ router.post('/register', authLimiter, async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
   const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
   const now = new Date().toISOString();
-  const country = geo.countryForReq(req);
+  const loc = geo.locationForReq(req);
+  const country = loc ? loc.country : null;
+  const tzIp = loc ? loc.timezone : null;
+  const tzLocal = sanitizeTz(body.timezone);
 
   const rows = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, country, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, NULL) RETURNING id`,
-    [username, username.toLowerCase(), passwordHash, color, country, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, country, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, NULL) RETURNING id`,
+    [username, username.toLowerCase(), passwordHash, color, country, tzIp, tzLocal, now]
   );
-  const user = { id: Number(rows[0].id), username, avatar_color: color, country: country || null };
+  const user = {
+    id: Number(rows[0].id),
+    username,
+    avatar_color: color,
+    country: country || null,
+    tz_ip: tzIp || null,
+    tz_local: tzLocal || null
+  };
 
   const session = await createSession(user.id, req);
   issueCookies(res, session);
@@ -163,7 +184,7 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   const password = String(body.password || '');
 
   const rows = await db.query(
-    'SELECT id, username, password_hash, avatar_color, country FROM users WHERE username_lower = $1',
+    'SELECT id, username, password_hash, avatar_color, country, tz_ip, tz_local FROM users WHERE username_lower = $1',
     [username.toLowerCase()]
   );
   const user = rows[0];
@@ -172,9 +193,19 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
     throw new ApiError(401, 'INVALID_CREDENTIALS', 'بيانات تسجيل الدخول غير صحيحة');
   }
 
-  const country = geo.countryForReq(req);
-  if (country) {
-    await db.query('UPDATE users SET country = $1 WHERE id = $2', [country, Number(user.id)]);
+  const loc = geo.locationForReq(req);
+  const country = loc ? loc.country : null;
+  const tzIp = loc ? loc.timezone : null;
+  const tzLocal = sanitizeTz(body.timezone);
+  if (country || tzIp) {
+    await db.query('UPDATE users SET country = COALESCE($2, country), tz_ip = COALESCE($3, tz_ip) WHERE id = $1', [
+      Number(user.id),
+      country,
+      tzIp
+    ]);
+  }
+  if (tzLocal) {
+    await db.query('UPDATE users SET tz_local = $2 WHERE id = $1', [Number(user.id), tzLocal]);
   }
 
   const session = await createSession(Number(user.id), req);
@@ -184,7 +215,9 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
       id: Number(user.id),
       username: user.username,
       avatar_color: user.avatar_color,
-      country: country || user.country || null
+      country: country || user.country || null,
+      tz_ip: tzIp || user.tz_ip || null,
+      tz_local: tzLocal || user.tz_local || null
     }
   });
 });
@@ -306,7 +339,7 @@ router.get('/google/callback', googleLimiter, async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const rows = await db.query(
-    'SELECT id, username, avatar_color, avatar_url, country, created_at FROM users WHERE id = $1',
+    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, created_at FROM users WHERE id = $1',
     [req.user.id]
   );
   if (!rows.length) throw new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول');

@@ -20,16 +20,20 @@ test('countryForIp resolves known countries', () => {
   assert.equal(geo.countryForIp(''), null);
 });
 
-test('register stores country from x-forwarded-for', async () => {
+test('register stores country and timezone from forwarded ip + body timezone', async () => {
   const res = await api('POST', '/api/auth/register', {
     headers: { 'x-forwarded-for': '41.64.0.12' },
-    body: { username: `geo_eg_${Date.now()}`, password: 'password123' }
+    body: { username: `geo_eg_${Date.now()}`, password: 'password123', timezone: 'Africa/Cairo' }
   });
   assert.equal(res.status, 201);
   assert.equal(res.data.user.country, 'EG');
+  assert.equal(res.data.user.tz_ip, 'Africa/Cairo');
+  assert.equal(res.data.user.tz_local, 'Africa/Cairo');
 
   const me = await api('GET', '/api/auth/me', { cookies: res.cookies });
   assert.equal(me.data.user.country, 'EG');
+  assert.equal(me.data.user.tz_ip, 'Africa/Cairo');
+  assert.equal(me.data.user.tz_local, 'Africa/Cairo');
 });
 
 test('register without identifiable ip leaves country null', async () => {
@@ -39,7 +43,20 @@ test('register without identifiable ip leaves country null', async () => {
   });
   assert.equal(res.status, 201);
   assert.equal(res.data.user.country, null);
-  assert.equal(res.data.user.country, null);
+  assert.equal(res.data.user.tz_ip, null);
+  assert.equal(res.data.user.tz_local, null);
+});
+
+test('vpn scenario keeps mismatch between ip tz and browser tz', async () => {
+  const res = await api('POST', '/api/auth/register', {
+    headers: { 'x-forwarded-for': '51.36.10.1' },
+    body: { username: `geo_vpn_${Date.now()}`, password: 'password123', timezone: 'Africa/Cairo' }
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.data.user.country, 'SA');
+  assert.equal(res.data.user.tz_ip, 'Asia/Riyadh');
+  assert.equal(res.data.user.tz_local, 'Africa/Cairo');
+  assert.notEqual(res.data.user.tz_ip, res.data.user.tz_local);
 });
 
 test('users list includes country and search shows it', async () => {
@@ -69,18 +86,23 @@ test('login refreshes country to most recent location', async () => {
   const name = `geo_l_${Date.now()}`;
   const reg = await api('POST', '/api/auth/register', {
     headers: { 'x-forwarded-for': '8.8.8.8' },
-    body: { username: name, password: 'password123' }
+    body: { username: name, password: 'password123', timezone: 'America/New_York' }
   });
   assert.equal(reg.status, 201);
   assert.equal(reg.data.user.country, 'US');
+  assert.equal(reg.data.user.tz_local, 'America/New_York');
 
   const login = await api('POST', '/api/auth/login', {
     headers: { 'x-forwarded-for': '51.36.10.1' },
-    body: { username: name, password: 'password123' }
+    body: { username: name, password: 'password123', timezone: 'Asia/Riyadh' }
   });
   assert.equal(login.status, 200);
   assert.equal(login.data.user.country, 'SA');
+  assert.equal(login.data.user.tz_ip, 'Asia/Riyadh');
+  assert.equal(login.data.user.tz_local, 'Asia/Riyadh');
 
   const me = await api('GET', '/api/auth/me', { cookies: login.cookies });
   assert.equal(me.data.user.country, 'SA');
+  assert.equal(me.data.user.tz_ip, 'Asia/Riyadh');
+  assert.equal(me.data.user.tz_local, 'Asia/Riyadh');
 });

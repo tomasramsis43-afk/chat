@@ -47,7 +47,7 @@ router.get('/', requireAuth, async (req, res) => {
             m.content AS last_content, m.kind AS last_kind, m.sender_id AS last_sender_id,
             m.created_at AS last_created_at, m.deleted_at AS last_deleted_at,
             ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
-            ou.country AS other_country,
+            ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local,
             (SELECT COUNT(*) FROM messages sm
               WHERE sm.conversation_id = c.id
                 AND sm.id > cm.last_read_message_id
@@ -77,6 +77,8 @@ router.get('/', requireAuth, async (req, res) => {
             username: row.other_username,
             avatar_color: row.other_avatar_color,
             country: row.other_country || null,
+            tz_ip: row.other_tz_ip || null,
+            tz_local: row.other_tz_local || null,
             online
           }
         : null,
@@ -215,7 +217,7 @@ async function summary(convId, forUserId) {
   const rows = await db.query(
     `SELECT c.id, c.type, c.name,
             ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
-            ou.country AS other_country
+            ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local
      FROM conversations c
      LEFT JOIN conversation_members om ON om.conversation_id = c.id AND om.user_id <> $1
      LEFT JOIN users ou ON ou.id = om.user_id
@@ -234,6 +236,8 @@ async function summary(convId, forUserId) {
       username: row.other_username,
       avatar_color: row.other_avatar_color,
       country: row.other_country || null,
+      tz_ip: row.other_tz_ip || null,
+      tz_local: row.other_tz_local || null,
       online: presence.isOnline(otherId)
     };
   } else if (row.name !== null && row.name !== undefined) {

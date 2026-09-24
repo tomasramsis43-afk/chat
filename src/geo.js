@@ -35,7 +35,7 @@ function isValidIp(ip) {
   return true;
 }
 
-function countryForIp(ip) {
+function locationForIp(ip) {
   const geo = loadLookup();
   if (!geo || !isValidIp(ip)) return null;
   const norm = String(ip).replace(/^::ffff:/, '');
@@ -43,14 +43,28 @@ function countryForIp(ip) {
     const r = geo.lookup(norm);
     if (!r || !r.country) return null;
     const code = String(r.country).toUpperCase();
-    return /^[A-Z]{2}$/.test(code) ? code : null;
+    if (!/^[A-Z]{2}$/.test(code)) return null;
+    return {
+      country: code,
+      timezone: typeof r.timezone === 'string' && r.timezone ? r.timezone : null
+    };
   } catch {
     return null;
   }
 }
 
-function countryForReq(req) {
-  return countryForIp(clientIp(req));
+function locationForReq(req) {
+  return locationForIp(clientIp(req));
 }
 
-module.exports = { clientIp, countryForIp, countryForReq };
+function countryForIp(ip) {
+  const loc = locationForIp(ip);
+  return loc ? loc.country : null;
+}
+
+function countryForReq(req) {
+  const loc = locationForReq(req);
+  return loc ? loc.country : null;
+}
+
+module.exports = { clientIp, locationForIp, locationForReq, countryForIp, countryForReq };

@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { el, q, qa, esc, avClass, avatarInner, timeOf, dayStamp, toast, flagHtml } from './ui.js';
+import { el, q, qa, esc, avClass, avatarInner, timeOf, dayStamp, toast, userFlagHtml } from './ui.js';
 import { icon as ii } from './icons.js';
 import { emitRead } from './socket.js';
 import { store, getConv, getMessages, clearLocalUnread } from './store.js';
@@ -508,7 +508,9 @@ export function paintHeader(conv) {
   const user = {
     username: other.username || conv.name,
     avatar_color: other.avatar_color,
-    country: other.country || (puser && puser.country),
+    country: other.country || (puser && puser.country) || null,
+    tz_ip: other.tz_ip || (puser && puser.tz_ip) || null,
+    tz_local: other.tz_local || (puser && puser.tz_local) || null,
     avatar_url: (puser && puser.avatar_url) || other.avatar_url
   };
   const av = el('chat-avatar');
@@ -516,7 +518,7 @@ export function paintHeader(conv) {
   av.classList.remove('av0', 'av1', 'av2', 'av3', 'av4', 'av5', 'av6', 'av7');
   av.classList.add(avClass(user.avatar_color));
   av.innerHTML = avatarInner(user);
-  el('chat-name').innerHTML = `${esc(user.username)}${flagHtml(user.country)}`;
+  el('chat-name').innerHTML = `${esc(user.username)}${userFlagHtml(user)}`;
   updateChatStatus(conv);
 }
 

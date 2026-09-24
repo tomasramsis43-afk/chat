@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { el, q, qa, avatarInner, avClass, esc, flagHtml } from './ui.js';
+import { el, q, qa, avatarInner, avClass, esc, userFlagHtml } from './ui.js';
 import { icon } from './icons.js';
 
 let onPick = null;
@@ -79,7 +79,7 @@ function render(box) {
       item.setAttribute('role', 'option');
       item.dataset.id = String(u.id);
       item.innerHTML = `<span class="avatar sm ${avClass(u.avatar_color)}">${avatarInner(u)}</span>
-        <span class="search-name">${esc(u.username)}${flagHtml(u.country)}</span>
+        <span class="search-name">${esc(u.username)}${userFlagHtml(u)}</span>
         ${u.online ? '<span class="dot online-dot" title="متصل"></span>' : ''}`;
       item.addEventListener('click', () => {
         closeResults();
