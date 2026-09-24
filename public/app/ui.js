@@ -145,18 +145,9 @@ function browserTimeZone() {
   }
 }
 
-function locationUncertain(ipTz, localTz) {
-  if (!ipTz || !localTz) return false;
-  return ipTz !== localTz;
-}
-
-export function flagHtml(country, ipTz, localTz) {
+export function flagHtml(country) {
   const emo = flagEmoji(country);
   if (!emo) return '';
-  if (locationUncertain(ipTz, localTz)) {
-    const label = 'الموقع غير مؤكد (VPN أو وكيل)';
-    return `<span class="flag flag-vpn" role="img" title="${esc(label)}" aria-label="${esc(label)}">؟</span>`;
-  }
   const name = countryName(country);
   const label = name ? `${name} (${country})` : `(${country})`;
   return `<span class="flag" role="img" title="${esc(label)}" aria-label="${esc(label)}">${emo}</span>`;
@@ -164,7 +155,7 @@ export function flagHtml(country, ipTz, localTz) {
 
 export function userFlagHtml(user) {
   if (!user) return '';
-  return flagHtml(user.country, user.tz_ip, user.tz_local);
+  return flagHtml(user.country);
 }
 
 export function sendTimeZone() {
