@@ -121,6 +121,26 @@ async function getOtherMembers(convId, exceptUserId) {
   return rows.map((r) => Number(r.user_id));
 }
 
+// يمنع إرسال رسالة لو في حظر (بأي اتجاه) بين المرسل وأي عضو تاني في المحادثة —
+// ده أساسًا بيغطي الـ DM (عضو واحد تاني) وهو أهم سيناريو للحظر.
+async function assertNotBlocked(convId, userId) {
+  const others = await getOtherMembers(convId, userId);
+  if (!others.length) return;
+  const ph = others.map((_, i) => `$${i + 2}`).join(',');
+  const rows = await db.query(
+    `SELECT 1 FROM blocks WHERE
+       (blocker_id = $1 AND blocked_id IN (${ph}))
+       OR (blocked_id = $1 AND blocker_id IN (${ph}))
+     LIMIT 1`,
+    [userId, ...others]
+  );
+  if (rows.length) {
+    const e = new Error('لا يمكن إرسال رسائل، يوجد حظر بينكما');
+    e.code = 'BLOCKED';
+    throw e;
+  }
+}
+
 function err(code, message) {
   return { error: { code, message } };
 }
@@ -150,7 +170,7 @@ function attachSocketIO(httpServer) {
     });
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
       const token = cookies[config.cookieNameAt];
@@ -171,8 +191,11 @@ function attachSocketIO(httpServer) {
       }
 
       const payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
+      const uid = Number(payload.sub);
+      const banRows = await db.query('SELECT banned_at FROM users WHERE id = $1', [uid]);
+      if (!banRows.length || banRows[0].banned_at) return next(new Error('UNAUTHORIZED'));
       socket.auth = {
-        userId: Number(payload.sub),
+        userId: uid,
         sid: payload.sid ? Number(payload.sid) : null,
         ip: socket.handshake.address || ''
       };
@@ -231,6 +254,7 @@ function attachSocketIO(httpServer) {
         }
 
         await assertMember(convId, userId);
+        await assertNotBlocked(convId, userId);
 
         if (cid) {
           const dup = await db.query(

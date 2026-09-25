@@ -69,6 +69,15 @@ if (isProd && STORAGE_PROVIDER === 's3') {
   if (!process.env.S3_ENDPOINT) errors.push('S3_ENDPOINT مطلوب مع STORAGE_PROVIDER=s3 في الإنتاج.');
 }
 
+// أسماء المستخدمين اللي بتترقّى تلقائيًا لـ admin عند التسجيل (فاصلة بينها كوما).
+// يُستخدم أيضًا في scripts/promote-admin.js لترقية مستخدم موجود بالفعل.
+const adminUsernames = new Set(
+  (process.env.ADMIN_USERNAMES || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 
@@ -101,6 +110,7 @@ module.exports = {
     enabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET)
   },
   allowedOrigins,
+  adminUsernames,
   // ===== Database =====
   dbUrl: DATABASE_URL,
   dbFile: rawDbFile === ':memory:' ? ':memory:' : rawDbFile ? path.resolve(rawDbFile) : null,

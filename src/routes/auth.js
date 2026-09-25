@@ -181,10 +181,11 @@ router.post('/register', authLimiter, async (req, res) => {
   const tzIp = loc ? loc.timezone : null;
   const tzLocal = sanitizeTz(body.timezone);
 
+  const role = config.adminUsernames.has(username.toLowerCase()) ? 'admin' : 'user';
   const rows = await db.query(
-    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, gender, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, NULL) RETURNING id`,
-    [username, username.toLowerCase(), passwordHash, color, gender, country, country ? 'ip' : null, tzIp, tzLocal, now]
+    `INSERT INTO users (username, username_lower, password_hash, avatar_color, avatar_url, gender, role, country, country_source, tz_ip, tz_local, created_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, $11, NULL) RETURNING id`,
+    [username, username.toLowerCase(), passwordHash, color, gender, role, country, country ? 'ip' : null, tzIp, tzLocal, now]
   );
   const user = {
     id: Number(rows[0].id),
@@ -193,7 +194,8 @@ router.post('/register', authLimiter, async (req, res) => {
     country: country || null,
     tz_ip: tzIp || null,
     tz_local: tzLocal || null,
-    gender: gender || null
+    gender: gender || null,
+    role
   };
 
   const session = await createSession(user.id, req);
@@ -246,13 +248,16 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
   const password = String(body.password || '');
 
   const rows = await db.query(
-    'SELECT id, username, password_hash, avatar_color, country, country_source, tz_ip, tz_local, gender FROM users WHERE username_lower = $1',
+    'SELECT id, username, password_hash, avatar_color, country, country_source, tz_ip, tz_local, gender, role, banned_at, banned_reason FROM users WHERE username_lower = $1',
     [username.toLowerCase()]
   );
   const user = rows[0];
   const ok = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
   if (!user || !ok) {
     throw new ApiError(401, 'INVALID_CREDENTIALS', 'بيانات تسجيل الدخول غير صحيحة');
+  }
+  if (user.banned_at) {
+    throw new ApiError(403, 'BANNED', user.banned_reason || 'الحساب موقوف');
   }
 
   const loc = geo.locationForReq(req);
@@ -284,7 +289,8 @@ router.post('/login', authLimiter, authUserLimiter, async (req, res) => {
       country: finalCountry,
       tz_ip: tzIp || user.tz_ip || null,
       tz_local: tzLocal || user.tz_local || null,
-      gender: user.gender || null
+      gender: user.gender || null,
+      role: user.role || 'user'
     }
   });
 });
@@ -311,6 +317,19 @@ router.post('/refresh', async (req, res) => {
     }
     clearAuthCookies(res);
     throw new ApiError(401, 'NO_SESSION', 'الجلسة منتهية');
+  }
+
+  const banCheck = await db.query('SELECT banned_at, banned_reason FROM users WHERE id = $1', [
+    Number(session.user_id)
+  ]);
+  if (banCheck.length && banCheck[0].banned_at) {
+    await db.query('UPDATE sessions SET revoked_at = $2 WHERE id = $1', [
+      Number(session.id),
+      new Date().toISOString()
+    ]);
+    clearAuthCookies(res);
+    presence.disconnectUser(Number(session.user_id));
+    throw new ApiError(403, 'BANNED', banCheck[0].banned_reason || 'الحساب موقوف');
   }
 
   const sid = Number(session.id);
@@ -437,10 +456,10 @@ router.post('/location', gpsLimiter, requireAuth, async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const rows = await db.query(
-    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, created_at FROM users WHERE id = $1',
+    'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, role, banned_at, created_at FROM users WHERE id = $1',
     [req.user.id]
   );
-  if (!rows.length) throw new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول');
+  if (!rows.length || rows[0].banned_at) throw new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول');
   res.json({ user: safeUser(rows[0]) });
 });
 

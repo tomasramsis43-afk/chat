@@ -37,6 +37,24 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// نجيب الدور من قاعدة البيانات في كل طلب أدمن (مش من الـ JWT) عشان لو حد
+// اتنزّل من admin يفقد الصلاحية فورًا من غير ما ينتظر انتهاء التوكن.
+async function requireAdmin(req, res, next) {
+  if (!req.user) return next(new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول'));
+  try {
+    const db = require('./db');
+    const rows = await db.query('SELECT role, banned_at FROM users WHERE id = $1', [req.user.id]);
+    const u = rows[0];
+    if (!u || u.role !== 'admin') {
+      return next(new ApiError(403, 'FORBIDDEN', 'صلاحيات أدمن مطلوبة'));
+    }
+    if (u.banned_at) return next(new ApiError(403, 'FORBIDDEN', 'الحساب موقوف'));
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
 function originAllowed(origin, req) {
   if (config.allowedOrigins.has(origin)) return true;
   if (!origin) return true;
@@ -160,6 +178,7 @@ module.exports = {
   requestId,
   auth,
   requireAuth,
+  requireAdmin,
   corsMiddleware,
   requireJsonBody,
   makeLimiter,

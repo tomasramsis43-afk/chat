@@ -21,6 +21,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const conversationRoutes = require('./routes/conversations');
 const uploadRoutes = require('./routes/uploads');
+const adminRoutes = require('./routes/admin');
 const { serveUpload } = require('./uploads');
 
 function createServer() {
@@ -105,6 +106,7 @@ function createServer() {
   app.use('/api/users', userRoutes);
   app.use('/api/conversations', conversationRoutes);
   app.use('/api/conversations', uploadRoutes);
+  app.use('/api/admin', adminRoutes);
 
   app.use(
     express.static(path.join(__dirname, '..', 'public'), {
