@@ -16,6 +16,12 @@ export function initNavDrawer(opts = {}) {
   mb.innerHTML = ii('menu', 20);
   const nc = el('nav-close');
   if (nc) nc.innerHTML = ii('close', 18);
+  const gIc = el('nav-ic-create');
+  if (gIc) gIc.innerHTML = ii('plus', 18);
+  const oIc = el('nav-ic-online');
+  if (oIc) oIc.innerHTML = ii('users', 18);
+  const cIc = el('nav-ic-convs');
+  if (cIc) cIc.innerHTML = ii('chat', 18);
   mb.addEventListener('click', toggleNavDrawer);
   const nb = el('nav-backdrop');
   if (nb) nb.addEventListener('click', closeNavDrawer);

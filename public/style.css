@@ -1116,32 +1116,41 @@ body.sidebar-view-online #online-wrap { display: block; }
 
 .nav-head { display: flex; align-items: center; gap: var(--sp-2); padding: 14px var(--sp-4); border-block-end: 1px solid var(--divider); }
 .nav-title { flex: 1; font-weight: 800; font-size: var(--fs-5); }
-.nav-body { flex: 1; overflow-y: auto; padding: var(--sp-3) var(--sp-2) var(--sp-5); overscroll-behavior: contain; }
+.nav-body { flex: 1; overflow-y: auto; padding: var(--sp-3) var(--sp-2) var(--sp-5); overscroll-behavior: contain; display: flex; flex-direction: column; gap: 3px; }
 
-.nav-section { margin-block-end: var(--sp-4); }
-.nav-section-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 8px; font-size: var(--fs-1); font-weight: 800; color: var(--text-soft); }
+.nav-section { margin-block-end: 0; }
+.nav-create { padding-block-end: var(--sp-2); margin-block-end: var(--sp-1); border-block-end: 1px solid var(--divider); }
 .nav-tab {
   width: 100%;
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px;
   background: transparent;
   border: 0;
   border-radius: var(--r-md);
-  color: var(--text-soft);
+  color: var(--text);
   font: inherit;
+  font-weight: 600;
+  font-size: var(--fs-3);
   text-align: start;
   cursor: pointer;
   transition: background var(--t-fast), color var(--t-fast);
 }
-.nav-tab:hover { background: var(--surface-2); color: var(--text); }
-.nav-tab-side { display: inline-flex; align-items: center; gap: 8px; }
-.nav-tab-arrow {
-  width: 8px;
-  height: 8px;
-  border: solid currentColor;
-  border-width: 0 0 2px 2px;
-  transform: rotate(135deg);
-  opacity: 0.55;
+.nav-tab:hover { background: var(--surface-2); }
+.nav-tab .nav-ic {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
+.nav-tab.nav-tab-create .nav-ic { background: var(--accent-grad); color: #fff; }
+.nav-tab-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-tab-side { display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .nav-list { display: flex; flex-direction: column; gap: 1px; }
 
 .nav-item {

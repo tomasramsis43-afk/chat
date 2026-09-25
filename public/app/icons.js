@@ -46,6 +46,11 @@ const ICONS = {
   video: () =>
     P.stroke('M22 8.5 17 12l5 3.5Zm-7-3H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-11a1 1 0 0 0-1-1Z'),
   user: () => P.circle(12, 8.2, 4) + P.stroke('M4.5 21a7.5 7.5 0 0 1 15 0'),
+  users: () =>
+    P.circle(9, 8.2, 3.4) +
+    P.stroke('M2.7 20a6.5 6.5 0 0 1 12.6 0') +
+    P.circle(17, 8.6, 2.6) +
+    P.stroke('M15 13.4a5.2 5.2 0 0 1 6.9 5.1'),
   chevron: () => P.stroke('m9 6 6 6-6 6'),
   trash: () => P.stroke('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'),
   pen: () => P.stroke('M4 20l4.2-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Zm6.5-8.5 3 3'),
