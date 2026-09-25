@@ -68,7 +68,7 @@ function validateGroupName(value) {
 
 async function memberList(convId) {
   const rows = await db.query(
-    `SELECT u.id, u.username, u.avatar_color, u.avatar_url, u.country, u.tz_ip, u.tz_local,
+    `SELECT u.id, u.username, u.avatar_color, u.avatar_url, u.country,
             u.created_at, cm.role, cm.joined_at
      FROM conversation_members cm
      JOIN users u ON u.id = cm.user_id
@@ -119,7 +119,7 @@ router.get('/', requireAuth, async (req, res) => {
 m.media_url AS last_media_url, m.media_name AS last_media_name,
              cm.pinned_at AS cm_pinned_at,
              ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
-             ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local,
+             ou.country AS other_country,
              ou.gender AS other_gender,
             (SELECT COUNT(*) FROM conversation_members mc
               WHERE mc.conversation_id = c.id) AS member_count,
@@ -160,8 +160,6 @@ m.media_url AS last_media_url, m.media_name AS last_media_name,
             username: row.other_username,
             avatar_color: row.other_avatar_color,
             country: row.other_country || null,
-            tz_ip: row.other_tz_ip || null,
-            tz_local: row.other_tz_local || null,
             gender: row.other_gender || null,
             online
           }
@@ -510,7 +508,7 @@ async function summary(convId, forUserId) {
   const rows = await db.query(
     `SELECT c.id, c.type, c.name,
             ou.id AS other_id, ou.username AS other_username, ou.avatar_color AS other_avatar_color,
-            ou.country AS other_country, ou.tz_ip AS other_tz_ip, ou.tz_local AS other_tz_local,
+            ou.country AS other_country,
             ou.gender AS other_gender,
             cm.role AS cm_role,
             (SELECT COUNT(*) FROM conversation_members mc
@@ -535,8 +533,6 @@ async function summary(convId, forUserId) {
       username: row.other_username,
       avatar_color: row.other_avatar_color,
       country: row.other_country || null,
-      tz_ip: row.other_tz_ip || null,
-      tz_local: row.other_tz_local || null,
       gender: row.other_gender || null,
       online: presence.isOnline(otherId)
     };

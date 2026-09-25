@@ -2,7 +2,6 @@ process.env.NODE_ENV = 'test';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const geo = require('../src/geo');
-const revgeo = require('../src/revgeo');
 const { startServer, closeServer, api } = require('./harness');
 
 before(async () => {
@@ -109,62 +108,3 @@ test('login refreshes country to most recent location', async () => {
   assert.equal(me.data.user.tz_local, 'Asia/Riyadh');
 });
 
-let gpsName = null;
-let gpsCookies = null;
-
-test('gps location route overrides vpn ip country and survives later login', async () => {
-  const original = revgeo.lookup;
-  try {
-    revgeo.lookup = async () => 'EG';
-
-    gpsName = `geo_gps_${Date.now()}`;
-    const reg = await api('POST', '/api/auth/register', {
-      headers: { 'x-forwarded-for': '51.36.10.1' },
-      body: { username: gpsName, password: 'password123', timezone: 'Asia/Riyadh' }
-    });
-    assert.equal(reg.status, 201);
-    assert.equal(reg.data.user.country, 'SA');
-    gpsCookies = reg.cookies;
-
-    const loc = await api('POST', '/api/auth/location', {
-      cookies: gpsCookies,
-      body: { latitude: 30.0444, longitude: 31.2357 }
-    });
-    assert.equal(loc.status, 200);
-    assert.equal(loc.data.country, 'EG');
-
-    const me = await api('GET', '/api/auth/me', { cookies: gpsCookies });
-    assert.equal(me.data.user.country, 'EG');
-  } finally {
-    revgeo.lookup = original;
-  }
-
-  const login = await api('POST', '/api/auth/login', {
-    headers: { 'x-forwarded-for': '51.36.10.1' },
-    body: { username: gpsName, password: 'password123', timezone: 'Asia/Riyadh' }
-  });
-  assert.equal(login.status, 200);
-  assert.equal(login.data.user.country, 'EG');
-});
-
-test('gps location route rejects invalid coordinates', async () => {
-  const res = await api('POST', '/api/auth/location', {
-    cookies: gpsCookies,
-    body: { latitude: 999, longitude: 31.2 }
-  });
-  assert.equal(res.status, 400);
-});
-
-test('gps location route fails cleanly when reverse geocoder unavailable', async () => {
-  const original = revgeo.lookup;
-  try {
-    revgeo.lookup = async () => null;
-    const res = await api('POST', '/api/auth/location', {
-      cookies: gpsCookies,
-      body: { latitude: 30.0444, longitude: 31.2357 }
-    });
-    assert.equal(res.status, 502);
-  } finally {
-    revgeo.lookup = original;
-  }
-});

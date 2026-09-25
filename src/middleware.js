@@ -131,11 +131,6 @@ const googleLimiter = makeLimiter({
   limit: Math.max(30, config.limits.auth.limit * 3)
 });
 
-const gpsLimiter = makeLimiter({
-  windowMs: 60 * 60 * 1000,
-  limit: 30
-});
-
 function notFound(req, res) {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'الموارد غير موجودة' } });
 }
@@ -187,7 +182,6 @@ module.exports = {
   authLimiter,
   authUserLimiter,
   googleLimiter,
-  gpsLimiter,
   notFound,
   errorHandler
 };

@@ -22,16 +22,14 @@ async function presencePayload() {
   if (!ids.length) return [];
   const ph = ids.map((_, i) => `$${i + 1}`).join(',');
   const rows = await db.query(
-    `SELECT id, username, avatar_color, country, tz_ip, tz_local FROM users WHERE id IN (${ph})`,
+    `SELECT id, username, avatar_color, country FROM users WHERE id IN (${ph})`,
     ids
   );
   return rows.map((u) => ({
     id: Number(u.id),
     username: u.username,
     avatar_color: u.avatar_color,
-    country: u.country || null,
-    tz_ip: u.tz_ip || null,
-    tz_local: u.tz_local || null
+    country: u.country || null
   }));
 }
 

@@ -121,7 +121,9 @@ function isUniqueViolation(err) {
   );
 }
 
-function safeUser(row) {
+// includeTz: لا يُفعّل إلا لبيانات المستخدم نفسه (أو للوحة الإدارة) — لا يُعرض
+// tz_ip/tz_local لباقي المستخدمين حفاظًا على خصوصية موقعهم التقريبي.
+function safeUser(row, { includeTz = false } = {}) {
   if (!row) return null;
   return {
     id: Number(row.id),
@@ -129,8 +131,8 @@ function safeUser(row) {
     avatar_color: row.avatar_color,
     avatar_url: row.avatar_url || null,
     country: row.country || null,
-    tz_ip: row.tz_ip || null,
-    tz_local: row.tz_local || null,
+    tz_ip: includeTz ? row.tz_ip || null : null,
+    tz_local: includeTz ? row.tz_local || null : null,
     gender: row.gender || null,
     role: row.role || 'user',
     created_at: toIso(row.created_at)
