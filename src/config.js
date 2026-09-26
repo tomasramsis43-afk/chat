@@ -159,11 +159,6 @@ module.exports = {
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false'
     }
   },
-  geoCacheFile: isTest
-    ? path.join(os.tmpdir(), `salem-revgeo-cache-${process.pid}.json`)
-    : path.resolve(
-        process.env.GEO_CACHE_FILE || path.join(__dirname, '..', 'data', 'revgeo-cache.json')
-      ),
   bodyLimit: process.env.BODY_LIMIT || '16kb',
   // ===== Logging =====
   logging: {

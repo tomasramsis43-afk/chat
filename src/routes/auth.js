@@ -6,7 +6,6 @@ const config = require('../config');
 const presence = require('../presence');
 const google = require('../google');
 const geo = require('../geo');
-const revgeo = require('../revgeo');
 const logger = require('../logger');
 const {
   ApiError,
@@ -19,7 +18,7 @@ const {
   validatePassword,
   isUniqueViolation
 } = require('../utils');
-const { requireAuth, authLimiter, authUserLimiter, googleLimiter, gpsLimiter } = require('../middleware');
+const { requireAuth, authLimiter, authUserLimiter, googleLimiter } = require('../middleware');
 
 const AVATAR_COLORS = ['#6C5CE7', '#00B894', '#0984E3', '#E17055', '#FDCB6E', '#E84393', '#00CEC9', '#D63031'];
 const DUMMY_HASH = bcrypt.hashSync('dummy-' + randomToken(6), 10);
@@ -438,29 +437,13 @@ router.get('/google/callback', googleLimiter, async (req, res) => {
   }
 });
 
-router.post('/location', gpsLimiter, requireAuth, async (req, res) => {
-  const body = req.body || {};
-  const lat = Number(body.latitude);
-  const lon = Number(body.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-    throw new ApiError(400, 'BAD_COORDINATES', 'إحداثيات غير صالحة');
-  }
-  const code = await revgeo.lookup(lat, lon);
-  if (!code) throw new ApiError(502, 'GEO_FAILED', 'تعذّر تحديد البلد من موقعك');
-  await db.query(
-    'UPDATE users SET country = $2, country_source = $3 WHERE id = $1',
-    [req.user.id, code, 'gps']
-  );
-  res.json({ country: code });
-});
-
 router.get('/me', requireAuth, async (req, res) => {
   const rows = await db.query(
     'SELECT id, username, avatar_color, avatar_url, country, tz_ip, tz_local, gender, role, banned_at, created_at FROM users WHERE id = $1',
     [req.user.id]
   );
   if (!rows.length || rows[0].banned_at) throw new ApiError(401, 'UNAUTHORIZED', 'مطلوب تسجيل الدخول');
-  res.json({ user: safeUser(rows[0]) });
+  res.json({ user: safeUser(rows[0], { includeTz: true }) });
 });
 
 module.exports = router;

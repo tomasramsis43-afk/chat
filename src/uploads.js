@@ -1,9 +1,26 @@
 'use strict';
 const path = require('path');
 const crypto = require('crypto');
+const sharp = require('sharp');
 const config = require('./config');
 const { ApiError, validateMessageContent } = require('./utils');
 const { getStorage, LocalStorageProvider } = require('./storage');
+
+// أنواع الصور اللي بنعيد ترميزها لحذف أي metadata مضمّنة (زي إحداثيات GPS من الموبايل).
+// الـ GIF مُستثناة عمدًا لأنها غالبًا متحركة وإعادة ترميزها بـ sharp ممكن يكسر الحركة.
+const STRIPPABLE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
+
+async function stripImageMetadata(buffer, mime) {
+  if (!STRIPPABLE_IMAGE_TYPES.has(mime)) return buffer;
+  try {
+    // rotate() بدون آرجيومنت بيطبّق دوران EXIF الصحيح قبل حذفه — sharp أصلاً
+    // مبيحتفظش بالـ metadata في الناتج إلا لو اتنادى عليه withMetadata() صراحة.
+    return await sharp(buffer).rotate().toBuffer();
+  } catch {
+    // لو الملف مش قابل للفك (صورة تالفة مثلاً)، نرجّع الأصلي بدل ما نكسر الرفع.
+    return buffer;
+  }
+}
 
 const ALLOWED_TYPES = {
   'image/jpeg': 'jpg',
@@ -64,10 +81,11 @@ async function storeUpload(buffer, mime) {
   if (buffer.length > config.limits.uploadMaxBytes) {
     throw new ApiError(413, 'TOO_LARGE', 'الملف أكبر من الحد المسموح (5MB)');
   }
+  const finalBuffer = isImageMime(mime) ? await stripImageMetadata(buffer, mime) : buffer;
   const filename = crypto.randomBytes(16).toString('hex') + '.' + extForMime(mime);
   const storage = getStorage();
-  await storage.put(filename, buffer, mime);
-  return filename;
+  await storage.put(filename, finalBuffer, mime);
+  return { filename, size: finalBuffer.length };
 }
 
 async function serveUpload(req, res, next) {
