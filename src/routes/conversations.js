@@ -17,6 +17,30 @@ const { requireAuth } = require('../middleware');
 const router = Router();
 const GROUP_MAX_MEMBERS = 50;
 
+async function attachReactions(messages, meId) {
+  if (!messages.length) return;
+  const ids = messages.map((m) => m.id);
+  const ph = ids.map((_, i) => `$${i + 1}`).join(',');
+  const rows = await db.query(
+    `SELECT message_id, emoji, user_id FROM message_reactions WHERE message_id IN (${ph})`,
+    ids
+  );
+  const byMessage = new Map();
+  for (const r of rows) {
+    const mid = Number(r.message_id);
+    if (!byMessage.has(mid)) byMessage.set(mid, new Map());
+    const byEmoji = byMessage.get(mid);
+    const cur = byEmoji.get(r.emoji) || { emoji: r.emoji, count: 0, mine: false };
+    cur.count += 1;
+    if (Number(r.user_id) === meId) cur.mine = true;
+    byEmoji.set(r.emoji, cur);
+  }
+  for (const m of messages) {
+    const byEmoji = byMessage.get(m.id);
+    m.reactions = byEmoji ? [...byEmoji.values()] : [];
+  }
+}
+
 async function assertMember(convId, userId) {
   const rows = await db.query(
     'SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2',
@@ -225,6 +249,7 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
   const messages = page.slice().reverse().map(mapMessage);
+  await attachReactions(messages, req.user.id);
   const nextBefore = hasMore ? Number(rows[limit - 1].id) : null;
 
   res.json({ messages, nextBefore });

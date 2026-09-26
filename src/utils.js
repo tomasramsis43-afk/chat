@@ -159,6 +159,9 @@ function mapMessage(row) {
   };
 }
 
+// الإيموجيهات المسموح بها كتفاعلات على الرسائل (مجموعة مقفلة لمنع أي إساءة استخدام)
+const REACTION_EMOJIS = new Set(['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥']);
+
 module.exports = {
   ApiError,
   parseCookies,
@@ -166,6 +169,7 @@ module.exports = {
   sha256Hex,
   toIso,
   toInt,
+  REACTION_EMOJIS,
   validateUsername,
   validatePassword,
   validateMessageContent,

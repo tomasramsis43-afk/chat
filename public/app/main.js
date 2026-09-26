@@ -5,7 +5,7 @@ import { connectSocket, disconnectSocket, setSocketHandlers, emitSend } from './
 import { store, getConv, bumpLocalUnread, isPinned, isMuted, setMembers, isGroup, memberOf } from './store.js';
 import { initSearch, startSearch } from './search.js';
 import { initSidebar, renderConversations, refreshOneConv, reorderConversations, renderOnlineList, setMe, updateMeStatus } from './sidebar.js';
-import { initMessages, openConversation, appendIncoming, appendPending, confirmPending, rejectPending, handleReadEvent, updateTyping, closeConversation, getActiveConvId, paintHeader, updateChatStatus, scrollToMessageById } from './messages.js';
+import { initMessages, openConversation, appendIncoming, appendPending, confirmPending, rejectPending, handleReadEvent, updateTyping, closeConversation, getActiveConvId, paintHeader, updateChatStatus, scrollToMessageById, applyReactionUpdate } from './messages.js';
 import { initComposer, startReply, setConnectedState, closeEmoji } from './composer.js';
 import { initPanel, openPanel, closePanel, refreshPanel, closeGroup, isPanelOpen } from './panel.js';
 import { showMenu, closeMenu } from './menu.js';
@@ -368,7 +368,8 @@ function connectPipe() {
     onTyping: updateTyping,
     onMembers: handleGroupMembers,
     onRenamed: handleGroupRenamed,
-    onDeleted: handleGroupDeleted
+    onDeleted: handleGroupDeleted,
+    onReaction: applyReactionUpdate
   });
 }
 

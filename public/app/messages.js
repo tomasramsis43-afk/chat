@@ -1,12 +1,13 @@
 import { api } from './api.js';
 import { el, q, qa, esc, avClass, avatarInner, timeOf, dayStamp, toast, userFlagHtml, userTimezone, timeInTimezone } from './ui.js';
 import { icon as ii } from './icons.js';
-import { emitRead } from './socket.js';
+import { emitRead, emitReaction } from './socket.js';
 import { store, getConv, getMessages, clearLocalUnread, isGroup, getMembers, setMembers, memberOf } from './store.js';
 import { showMenu } from './menu.js';
 
 const PAGE = 45;
 const MAX_ROWS = 900;
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥'];
 
 function fmtSize(bytes) {
   const n = Number(bytes);
@@ -289,6 +290,10 @@ function buildRow(m, tmp = false) {
   inner.appendChild(bubble);
 
   if (!m.deleted) {
+    inner.appendChild(buildReactionsBar(m));
+  }
+
+  if (!m.deleted) {
     const actions = document.createElement('div');
     actions.className = 'msg-actions';
     const rb = document.createElement('button');
@@ -300,6 +305,15 @@ function buildRow(m, tmp = false) {
       e.stopPropagation();
       onReplyClick && onReplyClick(m);
     });
+    const xb = document.createElement('button');
+    xb.type = 'button';
+    xb.className = 'act-btn';
+    xb.setAttribute('aria-label', 'تفاعل');
+    xb.innerHTML = '🙂';
+    xb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openReactionPicker(m, xb);
+    });
     const mb = document.createElement('button');
     mb.type = 'button';
     mb.className = 'act-btn';
@@ -310,6 +324,7 @@ function buildRow(m, tmp = false) {
       openMsgMenu(m, mb);
     });
     actions.appendChild(rb);
+    actions.appendChild(xb);
     actions.appendChild(mb);
     inner.appendChild(actions);
   }
@@ -368,6 +383,116 @@ function wireRowMenu(row, m) {
   row.addEventListener('pointermove', clear);
   row.addEventListener('pointercancel', clear);
   row.addEventListener('scroll', clear, true);
+}
+
+function buildReactionsBar(m) {
+  const bar = document.createElement('div');
+  bar.className = 'msg-reactions';
+  bar.dataset.forId = String(m.id);
+  renderReactionPills(bar, m.reactions || []);
+  return bar;
+}
+
+function renderReactionPills(bar, reactions) {
+  bar.innerHTML = '';
+  if (!reactions || !reactions.length) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  for (const r of reactions) {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = `reaction-pill${r.mine ? ' mine' : ''}`;
+    pill.innerHTML = `<span>${esc(r.emoji)}</span><span class="reaction-count">${r.count}</span>`;
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleReaction(Number(bar.dataset.forId), r.emoji);
+    });
+    bar.appendChild(pill);
+  }
+}
+
+let openPicker = null;
+function closeReactionPicker() {
+  if (openPicker) {
+    openPicker.remove();
+    openPicker = null;
+    document.removeEventListener('click', closeReactionPicker, true);
+  }
+}
+
+function openReactionPicker(m, anchor) {
+  closeReactionPicker();
+  const pop = document.createElement('div');
+  pop.className = 'reaction-picker';
+  for (const emoji of REACTION_EMOJIS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'reaction-picker-btn';
+    b.textContent = emoji;
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleReaction(m.id, emoji);
+      closeReactionPicker();
+    });
+    pop.appendChild(b);
+  }
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect();
+  const popW = pop.offsetWidth || 220;
+  pop.style.top = `${Math.max(8, r.top - pop.offsetHeight - 8)}px`;
+  pop.style.left = `${Math.min(window.innerWidth - popW - 8, Math.max(8, r.left))}px`;
+  openPicker = pop;
+  setTimeout(() => document.addEventListener('click', closeReactionPicker, true), 0);
+}
+
+async function toggleReaction(messageId, emoji) {
+  const convId = store.activeConvId;
+  const list = getMessages(convId).items;
+  const idx = list.findIndex((x) => x.id === messageId);
+  const res = await emitReaction(messageId, emoji);
+  if (!res || !res.ok) {
+    toast((res && res.error && res.error.message) || 'تعذّر إرسال التفاعل', 'error');
+    return;
+  }
+  if (idx !== -1) {
+    applyReactionToMessage(list[idx], { emoji, userId: store.me.id, added: res.added });
+    const bar = q(`.msg-reactions[data-for-id="${messageId}"]`, messagesEl);
+    if (bar) renderReactionPills(bar, list[idx].reactions);
+  }
+}
+
+function applyReactionToMessage(message, { emoji, userId, added }) {
+  const mine = store.me && userId === store.me.id;
+  const reactions = message.reactions ? [...message.reactions] : [];
+  const idx = reactions.findIndex((r) => r.emoji === emoji);
+  if (added) {
+    if (idx === -1) reactions.push({ emoji, count: 1, mine });
+    else {
+      reactions[idx] = { ...reactions[idx], count: reactions[idx].count + 1, mine: reactions[idx].mine || mine };
+    }
+  } else if (idx !== -1) {
+    const next = reactions[idx].count - 1;
+    const stillMine = reactions[idx].mine && !mine;
+    if (next <= 0) reactions.splice(idx, 1);
+    else reactions[idx] = { ...reactions[idx], count: next, mine: stillMine };
+  }
+  message.reactions = reactions;
+}
+
+export function applyReactionUpdate(ev) {
+  if (!ev || !ev.messageId) return;
+  const convId = Number(ev.conversationId);
+  const cache = store.messages.get(convId);
+  if (!cache) return;
+  const message = cache.items.find((x) => x.id === Number(ev.messageId));
+  if (!message) return;
+  applyReactionToMessage(message, ev);
+  if (store.activeConvId === convId) {
+    const bar = q(`.msg-reactions[data-for-id="${ev.messageId}"]`, messagesEl);
+    if (bar) renderReactionPills(bar, message.reactions);
+  }
 }
 
 function openMsgMenu(m, anchor, x, y) {

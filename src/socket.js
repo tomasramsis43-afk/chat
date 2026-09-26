@@ -11,7 +11,8 @@ const {
   validateId,
   validateNonnegInt,
   validateClientMsgId,
-  mapMessage
+  mapMessage,
+  REACTION_EMOJIS
 } = require('./utils');
 const { validateMediaPayload } = require('./uploads');
 
@@ -327,6 +328,57 @@ function attachSocketIO(httpServer) {
       } catch (caught) {
         metrics.inc('socket_message_errors_total', {}, 1);
         logger.debug('message:send error', { message: caught.message, code: caught.code });
+        replyWith(reply, caught);
+      }
+    });
+
+    socket.on('reaction:toggle', async (payload, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      try {
+        const data = payload || {};
+        const messageId = validateId(data.messageId);
+        const emoji = typeof data.emoji === 'string' ? data.emoji : '';
+        if (!REACTION_EMOJIS.has(emoji)) {
+          return reply(err('BAD_REQUEST', 'إيموجي غير مدعوم'));
+        }
+
+        const msgRows = await db.query(
+          'SELECT id, conversation_id, deleted_at FROM messages WHERE id = $1',
+          [messageId]
+        );
+        if (!msgRows.length || msgRows[0].deleted_at) {
+          return reply(err('NOT_FOUND', 'الرسالة غير موجودة'));
+        }
+        const convId = Number(msgRows[0].conversation_id);
+        await assertMember(convId, userId);
+
+        let added;
+        try {
+          await db.query(
+            'INSERT INTO message_reactions (message_id, user_id, emoji, created_at) VALUES ($1, $2, $3, $4)',
+            [messageId, userId, emoji, new Date().toISOString()]
+          );
+          added = true;
+        } catch (insertErr) {
+          const isDup =
+            insertErr && (insertErr.code === '23505' || String(insertErr.message).includes('UNIQUE'));
+          if (!isDup) throw insertErr;
+          await db.query(
+            'DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+            [messageId, userId, emoji]
+          );
+          added = false;
+        }
+
+        const event = { messageId, conversationId: convId, emoji, userId, added };
+        const others = await getOtherMembers(convId, userId);
+        for (const otherId of others) {
+          presence.emitToUser(otherId, 'reaction:update', event);
+        }
+        socket.to(`user:${userId}`).emit('reaction:update', event);
+
+        reply({ ok: true, added });
+      } catch (caught) {
         replyWith(reply, caught);
       }
     });

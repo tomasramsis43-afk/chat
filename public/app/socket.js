@@ -19,6 +19,7 @@ export function connectSocket() {
   socket.on('conversation:members', (ev) => handlers.onMembers && handlers.onMembers(ev));
   socket.on('conversation:renamed', (ev) => handlers.onRenamed && handlers.onRenamed(ev));
   socket.on('conversation:deleted', (ev) => handlers.onDeleted && handlers.onDeleted(ev));
+  socket.on('reaction:update', (ev) => handlers.onReaction && handlers.onReaction(ev));
 
   return socket;
 }
@@ -54,4 +55,11 @@ export function emitRead(conversationId, lastReadId) {
 export function emitTyping(conversationId) {
   if (!isConnected()) return;
   socket.emit('typing', { conversationId });
+}
+
+export function emitReaction(messageId, emoji) {
+  return new Promise((resolve) => {
+    if (!isConnected()) return resolve({ ok: false, error: { code: 'OFFLINE' } });
+    socket.emit('reaction:toggle', { messageId, emoji }, resolve);
+  });
 }

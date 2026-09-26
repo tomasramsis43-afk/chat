@@ -874,6 +874,56 @@ svg { flex: none; }
 .mine .msg-actions { inset-inline-end: -6px; }
 .theirs .msg-actions { inset-inline-end: -10px; }
 
+/* تفاعلات الرسائل */
+.msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+.msg-reactions.hidden { display: none; }
+.reaction-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+  font-size: var(--fs-2);
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.reaction-pill:hover { transform: translateY(-1px); }
+.reaction-pill.mine { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.reaction-count { font-weight: 700; font-size: var(--fs-1); opacity: 0.85; }
+
+.reaction-picker {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  box-shadow: var(--shadow-3);
+  padding: 6px 8px;
+  z-index: 80;
+  animation: pop 0.14s var(--ease);
+}
+.reaction-picker-btn {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.reaction-picker-btn:hover { background: var(--surface-2); transform: scale(1.18); }
+
 .older-loader {
   align-self: center;
   margin-bottom: 10px;
