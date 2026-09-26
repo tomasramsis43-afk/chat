@@ -88,7 +88,10 @@
   --overlay: rgba(4, 6, 10, 0.6);
   --scrollbar: rgba(255, 255, 255, 0.14);
   --glass: rgba(18, 22, 32, 0.82);
-  --msgs-wash: radial-gradient(90% 46% at 50% 0%, rgba(124, 110, 255, 0.10), transparent 62%);
+  --msgs-wash:
+    radial-gradient(85% 40% at 12% 0%, rgba(124, 110, 255, 0.10), transparent 60%),
+    radial-gradient(75% 42% at 100% 18%, rgba(42, 211, 196, 0.07), transparent 62%),
+    radial-gradient(70% 55% at 50% 100%, rgba(255, 159, 118, 0.045), transparent 65%);
 }
 
 [data-theme='light'] {
@@ -129,7 +132,10 @@
   --overlay: rgba(20, 24, 44, 0.42);
   --scrollbar: rgba(28, 34, 60, 0.22);
   --glass: rgba(255, 255, 255, 0.86);
-  --msgs-wash: radial-gradient(90% 46% at 50% 0%, rgba(106, 92, 240, 0.07), transparent 62%);
+  --msgs-wash:
+    radial-gradient(85% 40% at 12% 0%, rgba(106, 92, 240, 0.055), transparent 60%),
+    radial-gradient(75% 42% at 100% 18%, rgba(15, 182, 168, 0.05), transparent 62%),
+    radial-gradient(70% 55% at 50% 100%, rgba(255, 159, 118, 0.05), transparent 65%);
 }
 
 /* ============ 2) Reset & base ============ */
@@ -776,7 +782,9 @@ svg { flex: none; }
   gap: var(--sp-2);
   max-width: var(--msg-max);
   animation: rise var(--t-med) var(--ease);
+  margin-block-start: 12px;
 }
+.msg-row.grouped { margin-block-start: 3px; }
 .msg-row.mine { align-self: flex-end; flex-direction: row; }
 .msg-row.theirs { align-self: flex-start; flex-direction: row-reverse; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

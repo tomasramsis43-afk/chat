@@ -177,13 +177,17 @@ export function renderThread(thread) {
   }
   const frag = document.createDocumentFragment();
   let curDay = '';
+  let prevRow = null;
   for (const m of thread.items) {
     const dk = dayKey(m.created_at);
     if (dk && dk !== curDay) {
       curDay = dk;
       frag.appendChild(daySep(m.created_at));
+      prevRow = null;
     }
-    frag.appendChild(buildRow(m));
+    const row = buildRow(m, false, prevRow);
+    frag.appendChild(row);
+    prevRow = row;
   }
   messagesEl.appendChild(frag);
   pruneRows();
@@ -220,11 +224,20 @@ async function ensureGroupMembers(conv) {
   } catch {}
 }
 
-function buildRow(m, tmp = false) {
+function buildRow(m, tmp = false, prevRow = null) {
   const cid = m.conversation_id || store.activeConvId;
   const { mine, name, member } = senderOf(cid, m);
+  const grouped = !!(
+    prevRow &&
+    prevRow.classList &&
+    prevRow.classList.contains('msg-row') &&
+    prevRow.dataset.day === dayKey(m.created_at) &&
+    prevRow.classList.contains('mine') === mine &&
+    prevRow.dataset.sender === String(m.sender_id)
+  );
   const row = document.createElement('div');
-  row.className = `msg-row ${mine ? 'mine' : 'theirs'}`;
+  row.className = `msg-row ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}`;
+  row.dataset.sender = String(m.sender_id);
   row.dataset.id = String(m.id);
   row.dataset.day = dayKey(m.created_at);
   if (tmp) row.dataset.tmp = String(m.id);
@@ -557,7 +570,7 @@ export function appendIncoming(m) {
   if (dk && dk !== lastDay) {
     messagesEl.appendChild(daySep(m.created_at));
   }
-  messagesEl.appendChild(buildRow(m));
+  messagesEl.appendChild(buildRow(m, false, last));
   pruneRows();
 
   const shouldScroll = atBottomNow || isMine(m);
@@ -577,7 +590,8 @@ export function appendPending(convId, tmp) {
   const thread = getMessages(convId);
   thread.items.push(tmp);
   if (store.activeConvId === convId) {
-    messagesEl.appendChild(buildRow(tmp, true));
+    const last = messagesEl.lastElementChild;
+    messagesEl.appendChild(buildRow(tmp, true, last));
     if (atBottom() || isMine(tmp)) scrollBottom(true);
   }
 }
@@ -590,11 +604,12 @@ export function confirmPending(convId, tmpId, confirmed) {
   if (store.activeConvId !== convId) return;
   const row = q(`[data-tmp="${tmpId}"]`, messagesEl);
   if (row) {
-    row.replaceWith(buildRow(confirmed));
+    row.replaceWith(buildRow(confirmed, false, row.previousElementSibling));
     if (atBottom() || isMine(confirmed)) scrollBottom(true);
     return;
   }
-  messagesEl.appendChild(buildRow(confirmed));
+  const last = messagesEl.lastElementChild;
+  messagesEl.appendChild(buildRow(confirmed, false, last));
   scrollBottom(true);
 }
 
@@ -686,13 +701,17 @@ async function maybeLoadOlder() {
       let curDay = '';
       const curRow = messagesEl.querySelector('.msg-row');
       if (curRow) curDay = curRow.dataset.day;
+      let prevRow = null;
       for (const m of old) {
         const dk = dayKey(m.created_at);
         if (dk && dk !== curDay) {
           curDay = dk;
           frag.appendChild(daySep(m.created_at));
+          prevRow = null;
         }
-        frag.appendChild(buildRow(m));
+        const row = buildRow(m, false, prevRow);
+        frag.appendChild(row);
+        prevRow = row;
       }
       messagesEl.insertBefore(frag, loader);
       messagesEl.scrollTop = Math.max(0, messagesEl.scrollHeight - anchorH + anchorTop);
