@@ -181,12 +181,11 @@ router.get('/conversations', async (req, res) => {
   params.push(limit + 1);
   const rows = await db.query(
     `SELECT c.id, c.type, c.name, c.last_message_at, c.created_at,
-            (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count,
-            (SELECT json_agg_or_list) AS members_placeholder
+            (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
      FROM conversations c
      WHERE ${where}
      ORDER BY c.id DESC
-     LIMIT $${params.length}`.replace(', \n            (SELECT json_agg_or_list) AS members_placeholder', ''),
+     LIMIT $${params.length}`,
     params
   );
   const hasMore = rows.length > limit;
