@@ -111,6 +111,7 @@ async function enterApp(user) {
   store.me = user;
   window.salemMe = user;
   setMe(user, store.socketConnected);
+  el('nav-admin-section').classList.toggle('hidden', user.role !== 'admin');
   hideAuth();
   showSidebarView('full');
   renderConversations();

@@ -188,9 +188,13 @@ export function openPanel(convId) {
       <button class="btn btn-ghost" type="button" data-act="copy-name">${ii('copy', 16)}<span>نسخ الاسم</span></button>
       <button class="btn btn-ghost" type="button" data-act="copy-id">${ii('pen', 16)}<span>نسخ المعرّف</span></button>
       <button class="btn btn-ghost" type="button" data-act="mute">${ii('bell', 16)}<span>${muted ? 'إلغاء الكتم' : 'كتم الإشعارات'}</span></button>
+      ${other.id ? `<button class="btn btn-ghost" type="button" data-act="block" data-uid="${other.id}">${ii('close', 16)}<span id="block-btn-label">حظر المستخدم</span></button>` : ''}
+      ${other.id ? `<button class="btn btn-ghost danger" type="button" data-act="report" data-uid="${other.id}">${ii('alert', 16)}<span>الإبلاغ عن المستخدم</span></button>` : ''}
     </div>
     <p class="panel-hint">المعرّف الرقمي يسمح لأصدقائك ببدء محادثة معك أعلى تطبيقات التدوير المدعومة.</p>
   `;
+
+  if (other.id) refreshBlockLabel(other.id);
 
   body.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
@@ -201,7 +205,8 @@ export function openPanel(convId) {
     else if (act === 'mute') {
       toggleMute(convId, 'المحادثة');
       openPanel(convId);
-    }
+    } else if (act === 'block') toggleBlock(Number(btn.dataset.uid), name);
+    else if (act === 'report') reportUser(Number(btn.dataset.uid), name, convId);
   });
 
   el('panel').classList.add('open');
@@ -294,6 +299,72 @@ async function copy(text) {
     toast('تم النسخ', 'ok');
   } catch {
     toast('تعذّر النسخ', 'warn');
+  }
+}
+
+let blockedIdsCache = null;
+
+async function loadBlockedIds() {
+  try {
+    const data = await api.get('/api/users/me/blocked');
+    blockedIdsCache = new Set((data.users || []).map((u) => Number(u.id)));
+  } catch {
+    blockedIdsCache = blockedIdsCache || new Set();
+  }
+  return blockedIdsCache;
+}
+
+async function refreshBlockLabel(userId) {
+  const ids = await loadBlockedIds();
+  const label = el('panel-body').querySelector('#block-btn-label');
+  if (label) label.textContent = ids.has(Number(userId)) ? 'إلغاء حظر المستخدم' : 'حظر المستخدم';
+}
+
+async function toggleBlock(userId, name) {
+  const ids = await loadBlockedIds();
+  const blocked = ids.has(userId);
+  try {
+    if (blocked) {
+      await api.delete(`/api/users/${userId}/block`);
+      ids.delete(userId);
+      toast(`تم إلغاء حظر ${name}`, 'ok');
+    } else {
+      if (!confirm(`حظر ${name}؟ لن يقدر يبعتلك رسائل بعد كده.`)) return;
+      await api.post(`/api/users/${userId}/block`, {});
+      ids.add(userId);
+      toast(`تم حظر ${name}`, 'ok');
+    }
+    if (openConvId !== null) refreshBlockLabel(userId);
+  } catch (err) {
+    toast(err.message || 'تعذّرت العملية', 'error');
+  }
+}
+
+const REPORT_REASONS = [
+  ['spam', 'سبام / إعلانات'],
+  ['harassment', 'تحرّش أو إزعاج'],
+  ['inappropriate_content', 'محتوى غير لائق'],
+  ['fake_profile', 'حساب وهمي'],
+  ['underage', 'يبدو أنه قاصر'],
+  ['other', 'سبب آخر']
+];
+
+async function reportUser(userId, name, convId) {
+  const menu = REPORT_REASONS.map(([, label], i) => `${i + 1}. ${label}`).join('\n');
+  const pick = prompt(`الإبلاغ عن ${name} — اختر رقم السبب:\n${menu}`);
+  if (pick === null) return;
+  const idx = parseInt(pick, 10);
+  if (!idx || idx < 1 || idx > REPORT_REASONS.length) {
+    toast('اختيار غير صالح', 'error');
+    return;
+  }
+  const reason = REPORT_REASONS[idx - 1][0];
+  const details = prompt('تفاصيل إضافية (اختياري):', '') || '';
+  try {
+    await api.post(`/api/users/${userId}/report`, { reason, details, conversationId: convId });
+    toast('تم إرسال البلاغ، شكرًا لك', 'ok');
+  } catch (err) {
+    toast(err.message || 'تعذّر إرسال البلاغ', 'error');
   }
 }
 

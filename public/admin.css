@@ -1,0 +1,168 @@
+/* ============================================================
+   لوحة الإدارة — سالم
+   بتستخدم نفس design tokens من style.css (ألوان/مسافات/خطوط)
+   ============================================================ */
+
+html, body.admin-body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.admin-gate {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.admin-gate-card { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); color: var(--text-dim); }
+.spinner {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: admin-spin 0.8s linear infinite;
+}
+@keyframes admin-spin { to { transform: rotate(360deg); } }
+
+.admin-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ===== Topbar ===== */
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-3) var(--sp-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+  flex-wrap: wrap;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+}
+.admin-brand { display: flex; align-items: center; gap: var(--sp-3); }
+.admin-brand .brand-logo { width: 40px; height: 40px; border-radius: 12px; font-size: 18px; box-shadow: none; }
+.admin-brand h1 { margin: 0; font-size: var(--fs-6); font-weight: 800; }
+.admin-whoami { margin: 0; font-size: var(--fs-2); color: var(--text-dim); }
+
+.admin-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-inline-start: var(--sp-4); }
+.admin-tab {
+  border: none; background: transparent; color: var(--text-dim);
+  font: inherit; font-weight: 700; font-size: var(--fs-3);
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-full); cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  display: flex; align-items: center; gap: 6px;
+}
+.admin-tab:hover { background: var(--surface-2); color: var(--text); }
+.admin-tab.active { background: var(--accent-soft); color: var(--accent); }
+
+.admin-topbar-actions { display: flex; gap: var(--sp-2); margin-inline-start: auto; }
+
+.admin-main {
+  flex: 1;
+  padding: var(--sp-6);
+  max-width: 1180px;
+  width: 100%;
+  margin-inline: auto;
+}
+.admin-panel.hidden { display: none; }
+
+/* ===== نظرة عامة ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-4);
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  text-align: center;
+  box-shadow: var(--shadow-1);
+}
+.stat-val { font-size: var(--fs-8); font-weight: 900; background: var(--accent-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.stat-label { font-size: var(--fs-2); color: var(--text-dim); margin-top: 4px; font-weight: 700; }
+
+/* ===== أدوات لكل تبويب ===== */
+.panel-toolbar { display: flex; gap: var(--sp-3); margin-bottom: var(--sp-4); flex-wrap: wrap; }
+.panel-toolbar .input { max-width: 320px; }
+
+.segmented { display: flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: var(--r-full); }
+.seg-btn {
+  border: none; background: transparent; color: var(--text-dim); font: inherit; font-weight: 700;
+  font-size: var(--fs-2); padding: 7px 14px; border-radius: var(--r-full); cursor: pointer;
+}
+.seg-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); }
+
+/* ===== جدول المستخدمين ===== */
+.admin-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.admin-table { width: 100%; border-collapse: collapse; font-size: var(--fs-3); white-space: nowrap; }
+.admin-table th {
+  text-align: start; padding: var(--sp-3) var(--sp-4); color: var(--text-dim);
+  font-size: var(--fs-2); font-weight: 700; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--surface);
+}
+.admin-table td { padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--divider); }
+.admin-table tr:last-child td { border-bottom: none; }
+.cell-user { font-weight: 700; }
+.cell-dim { color: var(--text-dim); font-size: var(--fs-2); }
+.cell-actions { display: flex; gap: 6px; white-space: nowrap; }
+
+.btn-sm { padding: 6px 12px; font-size: var(--fs-2); border-radius: var(--r-md); }
+
+.pill.ok { background: rgba(47, 214, 137, 0.15); color: var(--online); }
+.pill.danger { background: var(--danger-soft); color: var(--danger); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+.pill.muted { background: var(--surface-2); color: var(--text-soft); }
+
+/* ===== بطاقات (بلاغات/محادثات) ===== */
+.cards-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+.admin-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--sp-4); box-shadow: var(--shadow-1);
+}
+.admin-card-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: 6px; }
+.admin-card-body { margin: 4px 0 8px; line-height: 1.7; }
+.admin-card-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
+
+.empty-hint { color: var(--text-dim); text-align: center; padding: var(--sp-7) 0; }
+
+/* ===== سجل التدقيق ===== */
+.audit-list, .audit-row { display: flex; flex-direction: column; }
+.audit-list { gap: 2px; }
+.audit-row {
+  flex-direction: row; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); font-size: var(--fs-3);
+}
+.audit-row:hover { background: var(--surface-2); }
+
+/* ===== نافذة عرض رسائل محادثة ===== */
+.admin-overlay {
+  position: fixed; inset: 0; background: var(--overlay);
+  display: flex; align-items: center; justify-content: center; z-index: 60;
+  backdrop-filter: blur(2px);
+}
+.admin-dialog {
+  width: min(94vw, 560px); max-height: min(86vh, 640px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-3);
+}
+.admin-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); border-bottom: 1px solid var(--border); }
+.admin-dialog-head h2 { margin: 0; font-size: var(--fs-5); }
+.conv-viewer-notice { margin: 0; padding: var(--sp-2) var(--sp-4); font-size: var(--fs-1); color: var(--text-soft); background: var(--surface-2); }
+.conv-viewer-messages { flex: 1; overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.audit-log-msg p { margin: 2px 0 0; line-height: 1.6; }
+
+@media (max-width: 720px) {
+  .admin-topbar { padding: var(--sp-3) var(--sp-4); }
+  .admin-tabs { order: 3; width: 100%; margin-inline-start: 0; }
+  .admin-main { padding: var(--sp-4); }
+}

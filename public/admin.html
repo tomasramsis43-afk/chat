@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c11">
+<title>لوحة الإدارة — سالم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-body">
+
+<div id="admin-gate" class="admin-gate">
+  <div class="admin-gate-card">
+    <div class="spinner"></div>
+    <p>جارِ التحقق من الصلاحيات…</p>
+  </div>
+</div>
+
+<div id="admin-root" class="admin-shell hidden">
+  <header class="admin-topbar">
+    <div class="admin-brand">
+      <div class="brand-logo">س</div>
+      <div>
+        <h1>لوحة الإدارة</h1>
+        <p id="admin-whoami" class="admin-whoami"></p>
+      </div>
+    </div>
+    <nav class="admin-tabs" id="admin-tabs">
+      <button class="admin-tab active" data-tab="overview" type="button">نظرة عامة</button>
+      <button class="admin-tab" data-tab="users" type="button">المستخدمين</button>
+      <button class="admin-tab" data-tab="reports" type="button">البلاغات <span id="reports-badge" class="pill danger hidden">0</span></button>
+      <button class="admin-tab" data-tab="conversations" type="button">المحادثات</button>
+      <button class="admin-tab" data-tab="audit" type="button">سجل التدقيق</button>
+    </nav>
+    <div class="admin-topbar-actions">
+      <button id="theme-toggle" class="btn btn-ghost" type="button" title="تبديل المظهر">🌓</button>
+      <a href="/" class="btn btn-ghost">رجوع للشات</a>
+    </div>
+  </header>
+
+  <main class="admin-main">
+
+    <section id="tab-overview" class="admin-panel">
+      <div class="stats-grid" id="stats-grid"></div>
+    </section>
+
+    <section id="tab-users" class="admin-panel hidden">
+      <div class="panel-toolbar">
+        <input id="users-search" class="input" type="search" placeholder="ابحث باسم المستخدم…" autocomplete="off">
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="users-table">
+          <thead>
+            <tr>
+              <th>المستخدم</th><th>النوع</th><th>الدور</th><th>الحالة</th><th>انضم</th><th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+      <button id="users-more" class="btn btn-ghost btn-block hidden" type="button">تحميل المزيد</button>
+    </section>
+
+    <section id="tab-reports" class="admin-panel hidden">
+      <div class="panel-toolbar">
+        <div class="segmented" id="reports-status">
+          <button class="seg-btn active" data-status="open" type="button">مفتوحة</button>
+          <button class="seg-btn" data-status="reviewing" type="button">قيد المراجعة</button>
+          <button class="seg-btn" data-status="resolved" type="button">تم الحل</button>
+          <button class="seg-btn" data-status="dismissed" type="button">مرفوضة</button>
+        </div>
+      </div>
+      <div id="reports-list" class="cards-list"></div>
+    </section>
+
+    <section id="tab-conversations" class="admin-panel hidden">
+      <div id="conversations-list" class="cards-list"></div>
+      <button id="conversations-more" class="btn btn-ghost btn-block hidden" type="button">تحميل المزيد</button>
+    </section>
+
+    <section id="tab-audit" class="admin-panel hidden">
+      <div id="audit-list" class="audit-list"></div>
+    </section>
+
+  </main>
+</div>
+
+<div id="conv-viewer" class="admin-overlay hidden">
+  <div class="admin-dialog">
+    <header class="admin-dialog-head">
+      <h2 id="conv-viewer-title">رسائل المحادثة</h2>
+      <button id="conv-viewer-close" class="icon-btn" type="button" aria-label="إغلاق">✕</button>
+    </header>
+    <p class="conv-viewer-notice">فتحك للرسائل هنا يُسجَّل تلقائيًا في سجل التدقيق.</p>
+    <div id="conv-viewer-messages" class="conv-viewer-messages"></div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script type="module" src="app/admin.js"></script>
+</body>
+</html>
